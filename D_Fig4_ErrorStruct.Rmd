@@ -1,0 +1,335 @@
+---
+title: "Comparison of Error Structures"
+author: "Chris Terry"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+This script includes the code to generate the example in Figure 4. 
+
+```{R message=FALSE, warning=FALSE}
+library(tidyverse)
+library(brms)
+library(cowplot)
+library(tidybayes)
+library(posterior)
+```
+
+# Generating simulated data
+
+Assuming true model is Beverton-Holt with log-normal variation structure.
+Generating noise with draws with parameters adjusted to maintain mean expected value.+
+A high number of replicates are used to try and minimise fitting noise, but exact results are still highly random seed dependent.
+
+```{r}
+set.seed(4)  
+
+### True Values
+lam_1 = 50
+lam_2 = 30
+a11 = 1.1
+a22 = 1
+a21 = 1.5
+a12  = 1.25
+
+log_sigma1 = 1.3
+log_sigma2 = 0.6
+
+True_values = data.frame(variable = c('b_lambda_FocalSp1','b_lambda_FocalSp2',  
+                                      'b_intra_FocalSp1' ,'b_intra_FocalSp2' ,  
+                                      'b_inter_FocalSp1' ,'b_inter_FocalSp2'),
+                         TRUE_value = c(lam_1, lam_2, a11, a22, a12, a21))
+
+### Generating Fake Data
+reps = 100  
+Levels <- c(2,5,12)
+
+## Sp 1  as focal
+Sp1_intra <- expand_grid(Focal = 'Sp1', N_focal = c(0,Levels),
+                         N_comp = 0, rep = 1:reps, Test = 'INTRA')
+Sp1_inter <- expand_grid(Focal = 'Sp1',N_focal = 0, N_comp = Levels,
+                         rep = 1:reps, Test = 'INTER' )
+
+bind_rows(Sp1_intra,Sp1_inter ) %>%
+  mutate(ExpectedSeeds =  lam_1 / (1+ a11*N_focal + a12*N_comp  ),
+         ExpectedLogSeeds  = log(ExpectedSeeds),
+         AdjustLogExpect = ExpectedLogSeeds - (log_sigma1^2)/2 ) %>%
+  rowwise() %>%
+  mutate( ObsSeeds = round(rlnorm( n = 1,
+                                   meanlog = AdjustLogExpect, 
+                                   sdlog = log_sigma1),
+                           0)) -> Sp1_Obs
+Sp1_Obs %>%
+  filter( N_focal+N_comp == 0) %>%
+  ungroup()%>%
+  summarise(mean(ObsSeeds))
+
+### Species 2 as focal
+Sp2_intra <- expand_grid(Focal = 'Sp2', N_focal = Levels,
+                         N_comp = 0,rep = 1:reps, Test = 'INTRA')
+Sp2_inter <- expand_grid(Focal = 'Sp2',N_focal = 0,
+                         N_comp =Levels, rep = 1:reps,  Test = 'INTER' )
+
+bind_rows(Sp2_intra,Sp2_inter ) %>%
+  mutate(ExpectedSeeds =  lam_2 / (1+ a22*N_focal + a21*N_comp  ),
+         ExpectedLogSeeds  = log(ExpectedSeeds),
+         AdjustLogExpect = ExpectedLogSeeds - (log_sigma2^2)/2 ) %>%
+  rowwise() %>%
+  mutate( ObsSeeds = round(rlnorm( n = 1,
+                                   meanlog = AdjustLogExpect,
+                                   sdlog = log_sigma2),
+                           0)) -> Sp2_Obs
+
+bind_rows(Sp1_Obs, Sp2_Obs)%>%
+  mutate( LogObsSeeds = log(ObsSeeds+0.01))%>% ## to prevent mathematical errors
+  mutate(Competitors = N_focal+N_comp) -> BothData
+
+```
+
+# Plotting Raw Data
+
+```{r}
+BothData%>%
+  mutate(Competitors = N_focal+N_comp) %>%
+  mutate(Competition= recode(Test,
+                             'INTRA' = 'Intraspecific',
+                             'INTER' = 'Interspecific')) %>%
+  ggplot(aes( x =Competitors ))+
+  geom_point(aes(y=ObsSeeds), col = 2, alpha = 0.1)+
+  geom_point(aes(y=ExpectedSeeds))+
+  geom_line(aes(y=ExpectedSeeds))+
+  facet_wrap(Focal ~Competition, 
+             scales = 'free_y',
+             labeller = label_both, nrow =1)+
+  scale_y_log10()+
+  theme_minimal()+
+  xlab('Number of Competitors')+
+  ylab('Observed Focal Species Output\nper individual')+
+  scale_x_continuous(breaks = c(0,Levels)) -> A_RawData
+A_RawData
+```
+
+# Model Fitting
+
+```{r eval = FALSE}
+m1_prior <- prior_string("uniform(0,50)",lb=0.1,ub=50,nlpar="lambda") +
+  prior_string("uniform(0,5)",lb=0,ub=5,nlpar="intra") +
+  prior_string("uniform(0,5)",lb=0,ub=5,nlpar="inter")
+
+## Log Scale fitting
+fit_m1_log_splitsigma <- brm(brmsformula(formula = LogObsSeeds ~ log( lambda / (1 + intra * N_focal  + inter * N_comp)),
+                                         nonlinear = list(lambda ~ 0 + Focal, intra ~ 0 + Focal,
+                                                          inter ~  0 + Focal, sigma ~0+ Focal),
+                                         nl = TRUE),
+                             data = BothData, prior = m1_prior,
+                             cores = getOption("mc.cores", 4))
+
+## Natural Scale Gaussian Fitting
+fit_m1_direct_splitsigma <- brm(brmsformula(formula = ObsSeeds ~ lambda / (1 + intra * N_focal  + inter * N_comp),
+                                            nonlinear = list(lambda ~ 0 + Focal, intra ~ 0 + Focal,
+                                                             inter ~  0 + Focal,sigma ~0+ Focal ),
+                                            nl = TRUE),
+                                data = BothData, prior = m1_prior,
+                                cores = getOption("mc.cores", 4))
+
+## Negative Binomial fitting
+fit_m1_direct_NegBimom <- brm(brmsformula(formula = ObsSeeds ~ lambda / (1 + intra * N_focal  + inter * N_comp),
+                                          family = negbinomial(link = 'identity'), 
+                                          nonlinear = list(lambda ~ 0 + Focal, intra ~ 0 + Focal,
+                                                           inter ~  0 + Focal, shape~0+Focal),
+                                          nl = TRUE),
+                              data = BothData, prior = m1_prior,
+                              cores = getOption("mc.cores", 4))
+
+## Poisson fitting
+fit_m1_direct_Poiss <- brm(brmsformula(formula = ObsSeeds ~ lambda / (1 + intra * N_focal  + inter * N_comp),
+                                       family = poisson(link = 'identity'), 
+                                       nonlinear = list(lambda ~ 0 + Focal, intra ~ 0 + Focal,
+                                                        inter ~  0 + Focal),
+                                       nl = TRUE),
+                           data = BothData, prior = m1_prior,
+                           cores = getOption("mc.cores", 4))
+
+save(fit_m1_log_splitsigma, file='ModelFits/fit_m1_log_splitsigma')
+save(fit_m1_direct_splitsigma, file='ModelFits/fit_m1_direct_splitsigma')
+save(fit_m1_direct_NegBimom, file='ModelFits/fit_m1_direct_NegBimom')
+save(fit_m1_direct_Poiss, file='ModelFits/fit_m1_direct_Poiss')
+```
+
+
+
+```{r}
+load(file='ModelFits/fit_m1_log_splitsigma')
+load(file='ModelFits/fit_m1_direct_splitsigma')
+load(file='ModelFits/fit_m1_direct_NegBimom')
+load(file='ModelFits/fit_m1_direct_Poiss')
+
+```
+
+### Best Estimates of parameters
+
+```{r}
+as_draws_array(fit_m1_direct_splitsigma) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80)))%>%
+  mutate( Model = 'Gaussian')-> Gaussian_params
+
+as_draws_array(fit_m1_log_splitsigma) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80)))%>%
+  mutate( Model = 'Log transform,\nthen Gaussian')-> LogGaussian_params
+
+as_draws_array(fit_m1_direct_Poiss) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80)))%>%
+  mutate( Model = 'Poisson') -> Pois_params
+
+as_draws_array(fit_m1_direct_NegBimom) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80))) %>%
+  filter( variable !='b_shape_FocalSp1')%>%
+  filter( variable !='b_shape_FocalSp2')%>%
+  mutate( Model = 'Negative-Binomial') -> NegBinom_params
+
+bind_rows( Gaussian_params,LogGaussian_params,
+           Pois_params,NegBinom_params ) %>%
+  filter( str_starts(variable, 'b_' )) %>%
+  filter( variable !='b_sigma_FocalSp1')%>%
+  filter( variable !='b_sigma_FocalSp2')%>%
+  left_join( True_values, by = "variable") %>%
+  separate(remove=FALSE, variable,
+           into = c('b', 'VAR', 'Focal' ))%>%
+  mutate( Focal = str_sub(Focal, 6, 8))-> Param_df
+
+Param_df%>%
+  mutate(VAR= recode(VAR,
+                     'inter' = ' α Intraspecific',
+                     'intra' = 'α Interspecific',
+                     'lambda'= 'λ')) %>%
+  ggplot(aes( y =Model , x = mean))+
+  geom_segment(aes( x= q5, xend = q95, yend = Model , col =Model ), linewidth = 3)+
+  geom_segment(aes( x= q20, xend = q80, yend = Model, col =Model  ), linewidth = 5)+
+  geom_point(size =2)+
+  # geom_errorbarh(aes( xmin = q5, xmax = q95))+
+  facet_grid(Focal~VAR, 
+             scales = 'free_x')+
+  geom_vline(aes( xintercept = TRUE_value))+
+  scale_y_discrete( breaks = c( 'Gaussian',
+                                'Log transform,\nthen Gaussian',
+                                'Poisson',
+                                'Negative-Binomial')) +
+  xlab('Parameter Value')+
+  ylab('Transformation\nand Error Approach')+
+  theme_minimal()+
+  guides(col = 'none')+
+  scale_colour_brewer(type = 'qual', palette = 'Dark2') -> B_Param_estimates
+B_Param_estimates
+```
+
+### Consequences for Predicted Coexistence
+
+```{R}
+## for plotting
+niche_differentiation <- seq(from = -.25, to = 1, by = 0.001)
+niche_overlap <- 1-niche_differentiation
+fitness_ratio_min <- niche_overlap
+fitness_ratio_max <- 1/niche_overlap
+coexistarea_df <- data.frame(niche_diff = niche_differentiation,
+                             min_fitness_ratio = fitness_ratio_min,
+                             max_fitness_ratio = fitness_ratio_max)
+
+## Log scale
+fit_m1_log_splitsigma %>%
+  posterior_summary() %>%
+  as_tibble(rownames = 'Var')-> Log_Estimates
+
+Ls <- as.list(Log_Estimates$Estimate)
+names(Ls)<- Log_Estimates$Var
+Ls
+ND_logged = 1 - sqrt((Ls$b_intra_FocalSp1  *Ls$b_intra_FocalSp2) / (Ls$b_inter_FocalSp1 * Ls$b_inter_FocalSp2)    )
+RFD_logged =  ((Ls$b_lambda_FocalSp1-1) / (Ls$b_lambda_FocalSp2-1)) *  sqrt((Ls$b_inter_FocalSp2*Ls$b_intra_FocalSp2) / (Ls$b_inter_FocalSp1 * Ls$b_intra_FocalSp1  )    )
+
+### Natural Scale
+
+fit_m1_direct_splitsigma %>%
+  posterior_summary() %>%
+  as_tibble(rownames = 'Var')-> Nat_Estimates
+
+Ns <- as.list(Nat_Estimates$Estimate)
+names(Ns)<- Nat_Estimates$Var
+Ns
+ND_natural = 1 - sqrt((Ns$b_intra_FocalSp1  *Ns$b_intra_FocalSp2) / (Ns$b_inter_FocalSp1 * Ns$b_inter_FocalSp2)    )
+RFD_natural =  ((Ns$b_lambda_FocalSp1-1) / (Ns$b_lambda_FocalSp2-1)) *  sqrt((Ns$b_inter_FocalSp2*Ns$b_intra_FocalSp2) / (Ns$b_inter_FocalSp1 * Ns$b_intra_FocalSp1  )    )
+
+### Negative Binomial
+
+fit_m1_direct_NegBimom %>%
+  posterior_summary() %>%
+  as_tibble(rownames = 'Var')-> NB_Estimates
+
+NBs <- as.list(NB_Estimates$Estimate)
+names(NBs)<- NB_Estimates$Var
+NBs
+ND_NegBimom = 1 - sqrt((NBs$b_intra_FocalSp1  *NBs$b_intra_FocalSp2) / (NBs$b_inter_FocalSp1 * NBs$b_inter_FocalSp2)    )
+RFD_NegBimom =  ((NBs$b_lambda_FocalSp1-1) / (NBs$b_lambda_FocalSp2-1)) *  sqrt((NBs$b_inter_FocalSp2*NBs$b_intra_FocalSp2) / (NBs$b_inter_FocalSp1 * NBs$b_intra_FocalSp1  )    )
+
+### Pois
+
+fit_m1_direct_Poiss %>%
+  posterior_summary() %>%
+  as_tibble(rownames = 'Var')-> POI_Estimates
+
+POI <- as.list(POI_Estimates$Estimate)
+names(POI)<- POI_Estimates$Var
+POI
+ND_Poiss = 1 - sqrt((POI$b_intra_FocalSp1  *POI$b_intra_FocalSp2) / (POI$b_inter_FocalSp1 * POI$b_inter_FocalSp2)    )
+RFD_Poiss =  ((POI$b_lambda_FocalSp1-1) / (POI$b_lambda_FocalSp2-1)) *  sqrt((POI$b_inter_FocalSp2*POI$b_intra_FocalSp2) / (POI$b_inter_FocalSp1 * POI$b_intra_FocalSp1  )    )
+
+## 'True' Values
+ND_true = 1 - sqrt((a11 *a22) / (a12 * a21)    )
+RFD_true =  ((lam_1-1)/ (lam_2-1)) *  sqrt((a21*a22) / (a12* a11 )    )
+
+
+CoexistPlane <-data.frame(  X = c( 'Gaussian',
+                                   'Log transform,\nthen Gaussian',
+                                   'Poisson',
+                                   'Negative-Binomial','True' ),
+                            NicheDiffs = c(ND_Poiss,  ND_logged, ND_natural,ND_NegBimom,   ND_true),
+                            RelFitDiff = c(RFD_Poiss, RFD_logged,RFD_natural,RFD_NegBimom, RFD_true))
+
+CoexistPlane
+
+FourCols <-RColorBrewer::brewer.pal(4, 'Dark2')
+
+CoexistPlane %>%
+  ggplot()+
+  geom_ribbon(data = coexistarea_df, aes(x = niche_diff, ymin = min_fitness_ratio,
+                                         ymax = max_fitness_ratio), fill = 'grey80')+
+  geom_line(data = coexistarea_df, aes(x = niche_diff, y = max_fitness_ratio)) +
+  geom_line(data = coexistarea_df,  aes(x = niche_diff, y = min_fitness_ratio)) +
+  geom_point( aes( x = NicheDiffs, y = RelFitDiff, col = X), size = 5)+
+  scale_y_log10()+
+  coord_cartesian(xlim = c(-0.05,0.5), ylim = c(0.5, 2) )+
+  scale_colour_manual(name = 'Model', values = c(FourCols, 'black' ))+
+  theme_minimal()+
+  ylab('Fitness Ratio\n(Sp 1 : Sp 2)' )+
+  xlab('Niche Difference') -> C_CorexistPlane
+C_CorexistPlane
+```
+
+# Combining  parts of the figure together
+
+```{r message=FALSE, warning=FALSE}
+Bottom<- plot_grid(B_Param_estimates,  C_CorexistPlane, labels = c('B', 'C'))
+plot_grid(A_RawData,Bottom, nrow = 2, labels = c('A', ''))
+ggsave('Figures/Fig4_ErrorStruct.png', width = 10, height = 6, dpi = 600, bg = 'white')
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```

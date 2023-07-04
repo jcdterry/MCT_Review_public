@@ -1,0 +1,432 @@
+---
+title: "Effect of Raw Data Error Structures - Real data Example"
+output: 
+  html_document: 
+    toc: yes
+date: "2023-01-17"
+editor_options: 
+  chunk_output_type: console
+---
+
+This script makes the supplementary Figure 1. It runs through the implications of different error models for inferences using real data sourced from Van Dyke et al (2022) https://doi.org/10.1038/s41586-022-05391-9 . Raw data is available here: https://doi.org/10.5281/zenodo.7083314 , but the key data is bundled in this repository for ease (`Data/VanDykeRaw.csv` and `Data/s_g_data.csv`) 
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(brms)
+library(posterior)
+library(cowplot)
+
+dall <- read_csv('Data/VanDykeRaw.csv')   ## observed seed counts
+s_g_data <- read_csv('Data/s_g_data.csv') ## germination and survival rate data
+
+```
+
+# Distribution of Observed Seed Counts
+
+```{r fig.height=6, fig.width=10}
+dall %>%
+  filter( num_comp ==0) %>%
+  ggplot( aes(num_seeds))+
+  geom_histogram(bins = 60)+
+  facet_grid(treat~focal)+
+  geom_rug()+
+  scale_x_log10()+
+  ggtitle('Distribution of seed counts\n NB Log x-axis')
+
+dall %>%
+  filter( num_comp ==0) %>%
+  group_by(focal) %>%
+  summarise(sd(num_seeds))
+
+d <- dall %>% filter(treat =='W' )
+FOCAL_SPECIES = 'PLER'
+
+PLER_data = filter(d, focal == 'PLER')
+focal_data= PLER_data
+
+
+### Some of the seed counts used extrapolation, so give non-integer counts which need rounding to use Poisson error distribution
+## Adding the 'al' column allows easy factorisation in brms as a simple fixed effect. 
+
+d %>%
+  select( background, focal, num_comp, num_seeds, Log_Seeds ) %>%
+  mutate(  Discrete_seeds = round(num_seeds),    
+           al = paste0(focal,'_X_', background))->LongData 
+
+```
+
+# Fitting Different Models
+
+Focussing on species 'PLER' (Plantago erecta) and just looking at the 'wet' treatment. Because only ever one species of background, can simplfy the model fitting a bit
+
+```{r eval = FALSE}
+m1_prior <- c( set_prior("normal(0, 10)", nlpar = "LOG10lambda", lb = 0.001, ub = 5),
+               set_prior("normal(.1, 5)", nlpar = "alpha", lb = .001, ub=10))
+
+m1_logged <- brm(brmsformula(formula = Log_Seeds~ log( (10^LOG10lambda) / (1 +  alpha * num_comp)),
+                             nonlinear = list(LOG10lambda ~ 0 + focal,
+                                              alpha ~ 0 + al,
+                                              sigma ~0+ focal),
+                             nl = TRUE),
+                 data = LongData, prior = m1_prior,
+                 cores = getOption("mc.cores", 4))
+
+m1_NotLogged<-brm( brmsformula(formula = num_seeds~(10^LOG10lambda)/(1+alpha*num_comp),
+                               nonlinear = list(LOG10lambda ~ 0 + focal,
+                                                alpha ~ 0 + al,
+                                                sigma ~0+ focal),
+                               nl = TRUE), 
+                   data= LongData, prior = m1_prior,
+                   cores = getOption("mc.cores", 4))
+
+m1_Pois<-brm(brmsformula(formula = Discrete_seeds~(10^LOG10lambda)/(1+alpha*num_comp),
+                         nonlinear = list(LOG10lambda ~ 0 + focal,
+                                          alpha ~ 0 + al),
+                         nl = TRUE), 
+             family = poisson(link = 'identity'), ## makes later inference easier to use identity link.  
+             data= LongData,  prior = m1_prior,
+             cores = getOption("mc.cores", 4))
+
+m1_NBinom<-brm( brmsformula(formula = Discrete_seeds~(10^LOG10lambda)/(1+alpha*num_comp),
+                            nonlinear = list(LOG10lambda ~ 0 + focal,
+                                             alpha ~ 0 + al, shape ~0+ focal),
+                            nl = TRUE), 
+                family = negbinomial(link = 'identity'), ##makes later inference easier to use identity link.  
+                data= LongData,prior = m1_prior,
+                cores = getOption("mc.cores", 4))
+
+save(m1_logged,    file= 'ModelFits/vDm1_logged')
+save(m1_NotLogged, file= 'ModelFits/vDm1_NotLogged')
+save(m1_Pois,      file= 'ModelFits/vDm1_Pois')
+save(m1_NBinom,    file= 'ModelFits/vDm1_NBinom')
+```
+
+```{r}
+load(file= 'ModelFits/vDm1_logged')
+load(file= 'ModelFits/vDm1_NotLogged')
+load(file= 'ModelFits/vDm1_Pois')
+load(file= 'ModelFits/vDm1_NBinom')
+```
+
+# Raw Data plots
+```{R}
+seed_data <- expand_grid( background = c("ACWR","FEMI","HOMU","PLER","SACO","URLI" ),
+                          num_comp = seq(0, 200))
+
+seed_data$focal = 'PLER'
+seed_data$al = paste0(seed_data$focal,'_X_', seed_data$background)
+
+
+seed_data$N_acwr <- ifelse(seed_data$background == "ACWR", seed_data$num_comp, 0)
+seed_data$N_femi <- ifelse(seed_data$background == "FEMI", seed_data$num_comp, 0)
+seed_data$N_homu <- ifelse(seed_data$background == "HOMU", seed_data$num_comp, 0)
+seed_data$N_pler <- ifelse(seed_data$background == "PLER", seed_data$num_comp, 0)
+seed_data$N_saco <- ifelse(seed_data$background == "SACO", seed_data$num_comp, 0)
+seed_data$N_urli <- ifelse(seed_data$background == "URLI", seed_data$num_comp, 0)
+
+seed_data$Gaussian <- colMeans(posterior_epred(m1_NotLogged,newdata = seed_data ))
+seed_data$LogGaussian <- colMeans(exp(posterior_epred(m1_logged,newdata = seed_data))) 
+seed_data$Poisson <- colMeans(posterior_epred(m1_Pois,newdata = seed_data))
+seed_data$NegBinom <- colMeans(posterior_epred(m1_NBinom,newdata = seed_data))
+
+prediction_df <- seed_data%>%
+  select( background, num_comp,Gaussian:NegBinom) %>%
+  pivot_longer(names_to = 'Model', values_to = 'Prediction',
+               cols = Gaussian:NegBinom)
+
+
+INTRA_prediction<- filter(prediction_df, background == FOCAL_SPECIES) 
+INTER_prediction<- filter(prediction_df, background != FOCAL_SPECIES) 
+
+
+filter(focal_data, background == FOCAL_SPECIES)%>%
+  ggplot( aes( x = num_comp, y = num_seeds))+
+  geom_point( )+
+  geom_line(aes(y = Prediction, col = Model), data = INTRA_prediction)+
+  scale_y_log10()+
+  scale_x_continuous(limits = c(0,150))+
+  scale_colour_brewer(type = 'qual', palette = 'Dark2',
+                      
+                      labels = c( 'Gaussian', 'Log transform,\nthen Gaussian',
+                                  'Negative-Binomial','Poisson'))+
+  theme_minimal()+
+  theme(legend.position = 'bottom' )+
+  xlab('Number of Competitors')+
+  ylab('Number of Seeds')+
+  ggtitle('Intraspecific Competition') -> ModelFitting_intra
+
+
+## Cutting Predictions to size 
+focal_data %>%
+  group_by(background)%>%
+  summarise(MAX = max(num_comp)) %>%
+  right_join( INTER_prediction, by = 'background') %>%
+  filter( num_comp <= MAX)%>%  
+  mutate(`Other Species` = background) -> INTER_prediction
+
+
+filter(focal_data, background != FOCAL_SPECIES) %>%  
+  mutate(`Other Species` = background) %>%
+  ggplot( aes( y = num_seeds, x = num_comp))+
+  facet_wrap(~`Other Species`, scales = 'free_x' , labeller = label_both )+
+  geom_point( )+
+  geom_line(aes(y = Prediction, col = Model), data =INTER_prediction)+
+  scale_y_log10()+
+  guides( colour = 'none')+
+  scale_colour_brewer(type = 'qual', palette = 'Dark2')+
+  theme_minimal()+
+  xlab('Number of Competitors')+
+  #ylab('Number of Seeds')+
+  theme(axis.title = element_blank())+
+  ggtitle('Interspecific Competition')  -> ModelFitting_inter
+
+
+plot_grid(ModelFitting_intra+guides(col ='none'),
+          ModelFitting_inter, rel_widths = c(1,1.5))-> RawDataPlots
+RawDataPlots
+```
+
+
+# Parameter Estimates
+
+```{r}
+as_draws_array(m1_NotLogged) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80)))%>%
+  mutate( Model = 'Gaussian')-> Gaussian_params
+
+as_draws_array(m1_logged) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80)))%>%
+  mutate( Model = 'Log transform,\nthen Gaussian')-> LogGaussian_params
+
+as_draws_array(m1_Pois) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80)))%>%
+  mutate( Model = 'Poisson') -> Pois_params
+
+as_draws_array(m1_NBinom) %>%
+  summarise_draws(.x = .,
+                  "mean","median","sd","mad","quantile2",~quantile2(.x, probs = c(0.20, 0.80))) %>%
+  filter( variable !='shape')%>%
+  mutate( Model = 'Negative-Binomial') -> NegBinom_params
+
+bind_rows( Gaussian_params,LogGaussian_params,
+           Pois_params,NegBinom_params ) %>%
+  filter( str_starts(variable, 'b_' )) %>%
+  separate(variable, into = c( 'a', 'param', 'focal', 'X','background'), remove = FALSE) %>%
+  mutate(focal = str_sub(focal, -4, -1),
+         background = str_sub(background, -4, -1)) -> Param_df
+
+```
+
+```{r}
+## Lambda
+
+Param_df%>%
+  filter(param == 'LOG10lambda', focal == 'PLER' )%>%
+  ggplot(aes( y =Model , x = 10^mean))+
+  geom_segment(aes( x= 10^q5, xend = 10^q95, yend = Model , col =Model ), linewidth = 1)+
+  geom_segment(aes( x= 10^q20, xend = 10^q80, yend = Model, col =Model  ), linewidth = 2)+
+  geom_point(size =1)+
+  scale_y_discrete( breaks = c( 'Gaussian', 'Log transform,\nthen Gaussian',
+                                'Poisson', 'Negative-Binomial'),
+                    limits =rev(c( 'Gaussian', 'Log transform,\nthen Gaussian',
+                                   'Poisson', 'Negative-Binomial'))) +
+  xlab('PLER λ')+
+ # scale_x_log10()+
+  ylab('Transformation\nand Error Approach')+
+  theme_minimal()+
+  guides(col = 'none')+
+  ggtitle('λ' )+
+  scale_colour_brewer(type = 'qual', palette = 'Dark2')-> ParamPlot_A
+
+## Competition terms
+Param_df%>%
+  filter(param=='alpha', focal == 'PLER' )%>%
+  mutate( background =  paste0('Competition from\n', background )) %>%
+  mutate( background =  recode(background,
+                               'Competition from\nPLER' = ' Intraspecific \nCompetition')) %>% 
+  ggplot(aes( y =Model , x = mean))+
+  geom_segment(aes( x= q5, xend = q95, yend = Model , col =Model ), linewidth = 1)+
+  geom_segment(aes( x= q20, xend = q80, yend = Model, col =Model  ), linewidth = 2)+
+  geom_point(size =1)+
+  facet_wrap(~background, 
+             scales = 'free_x')+
+  scale_y_discrete( breaks = c( 'Gaussian', 'Log transform,\nthen Gaussian',
+                                'Poisson','Negative-Binomial'),
+                    limits =rev(c( 'Gaussian', 'Log transform,\nthen Gaussian',
+                                   'Poisson', 'Negative-Binomial'))) +
+  xlab('α')+
+  ylab('Transformation\nand Error Approach')+
+  theme_minimal()+
+  theme(axis.title.y = element_blank())+
+  ggtitle('Competition impacting PLER')+
+  guides(col = 'none', y = 'none')+
+  scale_colour_brewer(type = 'qual', palette = 'Dark2')   -> ParamPlot_B
+
+plot_grid(ParamPlot_A,ParamPlot_B,
+          rel_widths = c(1,1)) -> Parameter_Plots
+Parameter_Plots
+```
+
+# Effect on predictions
+
+Just plotting median coexistence predictions with each species. 
+
+```{r}
+ExtractMCTQuant <- function(Sp2,Sp1, draws, label){
+  
+  ### Species 1 = Focal = PLER
+  ### Species 2 = competitor
+  
+  LamSp1 = 10^as_vector(draws[,paste0('b_LOG10lambda_focal',Sp1 )])
+  LamSp2 = 10^as_vector(draws[,paste0('b_LOG10lambda_focal',Sp2 )])
+  
+  ###
+  g1 = s_g_data$g[s_g_data$focal==Sp1]
+  g2 = s_g_data$g[s_g_data$focal==Sp2]
+  
+  s1 = s_g_data$s[s_g_data$focal==Sp1]
+  s2 = s_g_data$s[s_g_data$focal==Sp2]
+  
+  ## eta
+  eta1 = (LamSp1*g1)/ (1 - ((1-g1)*s1))
+  eta2 = (LamSp2*g2)/ (1 - ((1-g2)*s2))
+  
+  ## Alphas
+  a11 = as_vector(draws[,paste0('b_alpha_al',Sp1,'_X_', Sp1 )])
+  a22 = as_vector(draws[,paste0('b_alpha_al',Sp2,'_X_', Sp2 )])
+  a21 = as_vector(draws[,paste0('b_alpha_al',Sp2,'_X_', Sp1 )])
+  a12 = as_vector(draws[,paste0('b_alpha_al',Sp1,'_X_', Sp2 )])
+  
+  FitnessDiffs = ((eta2-1)/(eta1-1))*sqrt( (a12*a11)  / (a22*a21)   )
+  
+  NicheOverlap = sqrt( (a12*a21)  / (a22*a11)   )
+  NicheDiffs = 1- NicheOverlap
+  
+  Coexist = (NicheOverlap<FitnessDiffs) & (FitnessDiffs<(1/NicheOverlap))
+  
+  return(data.frame(label = label,
+                    FD = unname(FitnessDiffs),
+                    ND = unname(NicheDiffs),
+                    Coexist = unname(Coexist),
+                    LamSp1 =LamSp1,
+                    LamSp2=LamSp2,
+                    Sp1 = Sp1,
+                    Sp2 = Sp2,
+                    a11 = a11,
+                    a22 = a22,
+                    a21 = a21,
+                    a12 = a12 ))
+}
+```
+
+```{R message=FALSE, warning=FALSE}
+
+SpeciesVec <- sort(unique(d$focal))
+
+
+Gauss_MCT<- map_df( c("ACWR","FEMI" ,"HOMU"  ,"SACO" ,"URLI"),
+                    .f = ExtractMCTQuant,
+                    Sp1=FOCAL_SPECIES,
+                    draws = as_draws_df(m1_NotLogged),
+                    label = 'GAUSS' )
+
+Logged_MCT<- map_df( c("ACWR","FEMI" ,"HOMU"  ,"SACO" ,"URLI"),
+                     .f = ExtractMCTQuant,
+                     Sp1=FOCAL_SPECIES,
+                     draws = as_draws_df(m1_logged),
+                     label = 'LOG_TRANSFORM' )
+
+Poiss_MCT<- map_df( c("ACWR","FEMI" ,"HOMU"  ,"SACO" ,"URLI"),
+                    .f = ExtractMCTQuant,
+                    Sp1=FOCAL_SPECIES,
+                    draws = as_draws_df(m1_Pois),
+                    label = 'Pois' )
+
+NBinom_MCT<- map_df( c("ACWR","FEMI" ,"HOMU"  ,"SACO" ,"URLI"),
+                     .f = ExtractMCTQuant,
+                     Sp1=FOCAL_SPECIES,
+                     draws = as_draws_df(m1_NBinom),
+                     label = 'NBinom' )
+
+bind_rows(Gauss_MCT,Logged_MCT ,Poiss_MCT,NBinom_MCT) %>%
+  as_tibble() %>%
+  group_by(Sp1, Sp2,label) %>%
+  summarise(MedianND=median(ND),
+            MedianFD= median(FD),
+            FracCoexist = mean(Coexist),
+            Med_Lam1 = median(LamSp1),
+            Med_Lam2 = median(LamSp2),
+            MED_a11 = median(a11),
+            MED_a22 = median(a22),
+            MED_a12 = median(a12),
+            MED_a21 = median(a21)) -> MEDIANS_MCT
+
+MEDIANS_MCT 
+```
+
+
+```{R}
+## for plotting
+niche_differentiation <- seq(from = -0.6, to = 1, by = 0.001)
+niche_overlap <- 1-niche_differentiation
+fitness_ratio_min <- niche_overlap
+fitness_ratio_max <- 1/niche_overlap
+coexistarea_df <- data.frame(niche_diff = niche_differentiation,
+                             min_fitness_ratio = fitness_ratio_min,
+                             max_fitness_ratio = fitness_ratio_max)
+```                        
+
+
+```{r}
+MEDIANS_MCT%>%
+  mutate(`Other Species` = Sp2) %>%
+  ggplot()+
+  geom_ribbon(data = coexistarea_df, aes(x = niche_diff, ymin = min_fitness_ratio,
+                                         ymax = max_fitness_ratio), fill = 'grey80')+
+  geom_line(data = coexistarea_df, aes(x = niche_diff, y = max_fitness_ratio)) +
+  geom_line(data = coexistarea_df,  aes(x = niche_diff, y = min_fitness_ratio)) +
+  geom_point( aes( x = MedianND , y = MedianFD, col = label), size = 3)+
+  scale_y_log10()+
+  coord_cartesian(xlim = c(-0.6,1), 
+                  ylim = c(0.05, 3) )+
+  scale_colour_brewer(type = 'qual', palette = 'Dark2')+
+  theme_minimal()+
+  guides(colour ='none')+
+  facet_wrap(~`Other Species`, scales = 'free' , labeller = label_both )+
+  ylab('Fitness Ratio\n(PLER : Other Species)' )+
+  xlab('Niche Difference') -> CoexistencePlanePlots
+```
+
+# Assembling Final Figure
+
+```{r fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
+
+get_legend(ModelFitting_intra)
+
+
+plot_grid( RawDataPlots,
+           get_legend(ModelFitting_intra), 
+           Parameter_Plots, 
+           CoexistencePlanePlots,
+           ncol =1, rel_heights = c(2.5,0.5,3,3),
+           labels = c('a) Raw Data',
+                      '',
+                      'b) Parameter Estimates',
+                      'c) Coexistence Predictions'),
+           hjust = 0,
+           scale = 0.9) -> AllTogether
+
+AllTogether
+
+ggsave(plot = AllTogether, 'Figures/FigS1_realdataErrorStruct.png',
+       width = 8,height = 12, dpi = 400, bg = 'white')
+
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```

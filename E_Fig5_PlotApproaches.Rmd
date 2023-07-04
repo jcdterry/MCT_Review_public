@@ -1,0 +1,465 @@
+---
+title: "Methods to present MCT data"
+output: html_document
+date: "2023-02-10"
+editor_options: 
+  chunk_output_type: console
+---
+
+This script produces examples for different methods to present MCT predictions on a coexistence plane (Figure 5).
+
+Real data is taken from archived data linked to Terry et al. (2021) and scripts read directly in from a public github repository (jcdterry/TCL_DrosMCT/). If these ever disappear for some reason, the same functions and data are also archived on Zenodo: https://doi.org/10.5281/zenodo.4736655#.YJuwHsCNdGE
+
+# Reading data
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(rstan)
+library(shinystan)
+library(knitr)
+library(scales)
+library(loo)
+library(cowplot)
+library(scales)
+library(gridExtra)
+library(ggrepel)
+library(scatterpie)
+
+# library(igraph)
+
+source('https://raw.githubusercontent.com/jcdterry/TCL_DrosMCT/master/Scripts/Stanfunctions.R')  ## STAN functions used to fit models (just for references as fit is saved)
+source('https://raw.githubusercontent.com/jcdterry/TCL_DrosMCT/master/Scripts/Other%20Functions.R') ## Functions to aid in manipulating data.
+d_both<- read_csv('https://raw.githubusercontent.com/jcdterry/TCL_DrosMCT/master/Data/LongFormData.csv')
+species <- c('BIR','PAL', 'PAN', 'PSA', 'SIM', 'SUL')
+
+# cols = c('BIR' = 'skyblue',  'PAL' = 'darkblue',
+#          'PAN' = 'red', 'PSA'= 'darkgreen',  
+#          'SIM' = 'purple',  'SUL' = 'gold'  )
+```
+
+# Preparing data
+
+NB '_Nt' values are inferred number of females values, so need to double up. 
+```{r}
+d_both <- mutate(d_both, ObsCount_Total =  ObsCount_Pairs*2)
+STAN_data = list(N = nrow(d_both), y = d_both$ObsCount_Total) 
+```
+
+# Fitting STAN models 
+
+This fit model object is included in the repository - this call is included just for reference. 
+
+```{r eval = FALSE}
+# fit_2R_2A <- stan( file = '../TCL_DrosMCT/StanModels/BuiltModel_NegB_2R_2A.stan',
+#                    data = STAN_data, 
+#                    chains = 4, seed = 1,
+#                    cores = 4, iter = 1000)
+# save(fit_2R_2A, file = 'Data/fit_ExampleData')
+```
+
+```{r message=FALSE, warning=FALSE}
+# Loading model fits:
+load(file = 'ModelFits/fit_ExampleData' )
+draws<-extract(fit_2R_2A )
+```
+
+# Plotting Niche and Fitness Differences
+
+### Finding median values 
+
+```{r}
+r_safe <- matrixStats::colMedians(  draws$r1   )-1
+r_para <- matrixStats::colMedians(  draws$r2   )-1
+### Arranging 
+A_safe <-matrix( matrixStats::colMedians(  draws$A1), 6,6)
+A_para <-matrix( matrixStats::colMedians(  draws$A2), 6,6)
+
+
+Median_NicheOverlap_safe = matrix(NA, 6,6)
+Median_NicheOverlap_para = matrix(NA, 6,6)
+Median_FitnessDifference_safe = matrix(NA, 6,6)
+Median_FitnessDifference_para = matrix(NA, 6,6)
+
+### Vectorised over draws (3rd dimension)
+for(i in 1:6){
+  for(j in 1:6){
+    if(i ==j){ 
+      Median_NicheOverlap_safe[i,j]<- NA
+      Median_NicheOverlap_para[i,j]<- NA
+      Median_FitnessDifference_para[i,j]<- NA
+      Median_FitnessDifference_safe[i,j]<- NA
+    }else{
+      Median_NicheOverlap_safe[i,j]<- sqrt(  (A_safe[i,j]/A_safe[j,j]) * (A_safe[j,i]/A_safe[i,i])   )
+      Median_NicheOverlap_para[i,j]<- sqrt(  (A_para[i,j]/A_para[j,j]) * (A_para[j,i]/A_para[i,i])   )
+      Median_FitnessDifference_safe[i,j] <-   (r_safe[i]/r_safe[j])   *  sqrt(  (A_safe[j,j]*A_safe[j,i]) / (A_safe[i,i]*A_safe[i,j])) 
+      Median_FitnessDifference_para[i,j] <-   (r_para[i]/r_para[j])   *  sqrt(  (A_para[j,j]*A_para[j,i]) / (A_para[i,i]*A_para[i,j])) 
+    }
+  }
+}
+
+Median_NicheDiff_safe = 1- Median_NicheOverlap_safe 
+Median_NicheDiff_para = 1- Median_NicheOverlap_para 
+
+
+map_df(1:15, function(i,  Median_NicheOverlap_safe,Median_NicheOverlap_para,
+                      Median_FitnessDifference_safe,Median_FitnessDifference_para){
+  
+  ToSelect<-which(lower.tri(Median_FitnessDifference_safe), arr.ind = TRUE)
+  
+  df <- data.frame(MEDFD_Safe = Median_FitnessDifference_safe[ToSelect[i,1],ToSelect[i,2]] ,
+                   MEDFD_Para = Median_FitnessDifference_para[ToSelect[i,1],ToSelect[i,2]] ,
+                   MEDND_Safe =         Median_NicheDiff_safe[ToSelect[i,1],ToSelect[i,2]],
+                   MEDND_Para =         Median_NicheDiff_para[ToSelect[i,1],ToSelect[i,2]])
+  
+  sp<- c('BIR','PAL', 'PAN', 'PSA', 'SIM', 'SUL')
+  df$Combination <- paste0(sp[ToSelect[i,1]],'_',sp[ToSelect[i,2]])
+  
+  return(df)
+},Median_NicheOverlap_safe,Median_NicheOverlap_para,
+Median_FitnessDifference_safe,Median_FitnessDifference_para)%>%
+  gather( 'Thing', 'Value',  MEDFD_Safe:MEDND_Para )%>%
+  separate(Thing, into =c('Quantity', 'Treatment')) %>%
+  pivot_wider( id_cols = c('Combination', 'Treatment'),
+               names_from = 'Quantity', values_from = 'Value') -> MedianValues
+
+```
+
+### Using full posterior
+
+```{R}
+HS_NiFi_draws<-CalcNicheFitDiffs_fromSTANfit(A_draws = draws$A1,
+                                             R_draws = draws$r1)
+HP_NiFi_draws<-CalcNicheFitDiffs_fromSTANfit(A_draws = draws$A2,
+                                             R_draws = draws$r2)
+
+AllValues_HS<- map_df(1:15, ExtractDiffs, HS_NiFi_draws   )
+AllValues_HP<- map_df(1:15, ExtractDiffs, HP_NiFi_draws   )
+
+bind_rows(mutate(AllValues_HS, Treatment = 'Safe'),
+          mutate(AllValues_HP, Treatment = 'Para')) %>%
+  mutate(Rho = 1- NicheDiff, 
+         Priority         = 1/Rho < FitnessDiff &  FitnessDiff < Rho   &  NicheDiff <0,
+         AboveBoundary_A1 = 1/Rho < FitnessDiff &  FitnessDiff > Rho   &  NicheDiff <0, 
+         BelowBoundary_B1 = 1/Rho > FitnessDiff                        &  NicheDiff <0, 
+         Coexistence      =   Rho < FitnessDiff &  FitnessDiff < 1/Rho &  NicheDiff >0,
+         AboveBoundary_A2 =                        FitnessDiff > 1/Rho &  NicheDiff >0,
+         BelowBoundary_B2 =   Rho > FitnessDiff                        &  NicheDiff >0, 
+         Check = AboveBoundary_A1+AboveBoundary_A2+BelowBoundary_B1+BelowBoundary_B2+Coexistence+Priority
+  ) -> LongFormPosterior
+
+
+LongFormPosterior %>%
+  group_by(Combination, Treatment)%>%
+  summarise(MedianNicheDiff = median(NicheDiff),
+            MedianFitnessDiff = median(FitnessDiff),
+            MedianRho = median(Rho),
+            MedianStable =  MedianRho<MedianFitnessDiff & MedianFitnessDiff<(1/(MedianRho))  & MedianNicheDiff>0,
+            Above = mean(AboveBoundary_A1+AboveBoundary_A2)*100,
+            Below = mean(BelowBoundary_B1+BelowBoundary_B2)*100, 
+            Coexistence=mean(Coexistence)*100,
+            Priority=mean(Priority)*100,
+            Check = mean(Check))%>%
+  separate(Combination , into = c('Species 1', 'Species 2'), remove = FALSE) -> PosteriorLocation
+
+PosteriorLocation %>%
+  left_join(MedianValues, by = c("Combination", "Treatment"))%>%
+  arrange(Combination,desc(Treatment))%>%
+  ungroup()%>%
+  mutate( `Species 1` = recode(`Species 1`,
+                               BIR = 'birchii',
+                               PAL = 'pallidifrons',
+                               PAN = 'pandora',
+                               PSA = 'pseudoananassae',
+                               SIM = 'simulans',
+                               SUL = 'sulfurigaster')   ,
+          `Species 2` = recode(`Species 2`,
+                               BIR = 'birchii',
+                               PAL = 'pallidifrons',
+                               PAN = 'pandora',
+                               PSA = 'pseudoananassae',
+                               SIM = 'simulans',
+                               SUL = 'sulfurigaster')   ) %>%
+  rename(`Species 1 Wins` = Above, 
+         `Species 2 Wins` = Below ) %>%
+  mutate(Difference = Coexistence-lag(Coexistence),
+         MedianStable =(1-MEDND)<MEDFD   & MEDFD<(1/((1-MEDND)))  & MEDND>0 ) -> TidyTable
+
+
+# SpeciesToPlot <- 'SUL_BIR'
+SpeciesToPlot <- 'SIM_PAL'
+
+TidyTable%>% 
+  filter(Combination == 'SIM_PAL') %>%
+  select(-Combination,-Check, - (MedianNicheDiff :MedianRho ))%>%
+  mutate(       Difference = ifelse(Treatment== 'Safe', ' ',round(Difference,1)  ),
+                `Species 1`  = ifelse(Treatment== 'Para', ' ',`Species 1`  ),
+                `Species 2`  = ifelse(Treatment== 'Para', ' ',  `Species 2`   ) )%>%
+  kable(digits = 2) 
+
+PosteriorLocation%>%
+  select(Combination, Treatment , Coexistence)%>%
+  spread(Treatment, Coexistence) %>% 
+  ungroup()%>%
+  mutate(Improved = Para>Safe)-> ImprovedOrNotData
+
+```
+
+# Coexistence Plane plots
+
+```{R}
+## Data pre-prep
+ImprovedOrNotData%>%
+  mutate(Shift = Safe-Para )%>%
+  arrange(desc(Shift))-> OrderedCombs
+
+bind_rows(mutate(AllValues_HS, Treatment = 'Safe'),
+          mutate(AllValues_HP, Treatment = 'Para'))-> Both_TreatmentsValues
+
+Both_TreatmentsValues$CombinationOrdered <- factor(Both_TreatmentsValues$Combination,
+                                                   levels = OrderedCombs$Combination)
+
+BoundaryValues<-data.frame(x = seq(0,0.99,l=100), 
+                           y1 =   1/ (1-seq(0,0.99,l=100)),
+                           y2 = (1-seq(0,0.99,l=100)))      
+
+
+BoundaryValues_P<-data.frame(x = seq(0,-0.5,l=100), 
+                             y1 =   1/ (1-seq(0,-0.5,l=100)),
+                             y2 = (1-seq(0,-0.5,l=100)))      
+OneLine<- data.frame(x= c(rev(BoundaryValues$x),BoundaryValues$x),
+                     y= c(rev(BoundaryValues$y2),BoundaryValues$y1 ))
+
+Labels <- data.frame(Text = c('Priority\neffect',
+                              'Species i wins',
+                              'Species j wins',
+                              'Coexistence'),
+                     x = c(-0.3, 0.1, 0.1, 0.5),
+                     y = c(1.1, 3, 0.3, 1))
+
+
+
+TidyName<-  function(name){
+  parts<- str_split_fixed(name, '_', 2)  
+  nicename<- paste0('italic(i):~', parts[,1], '~italic(j):~',  parts[,2])
+  return(nicename)
+}
+
+Labels <- data.frame(Text = c('Priority\neffect',
+                              'Species j wins',
+                              'Species i wins',
+                              'Coexistence'),
+                     x = c(-0.15, 0.2, 0, 0.7),
+                     y = c(1    , 3  , 0.1, 2))
+
+```
+
+# Best Fit
+
+```{r}
+MedianValues %>%
+  filter( Combination  ==SpeciesToPlot) %>% 
+  mutate( Combination=TidyName(Combination) ) %>%
+  ggplot(aes(  MEDND, MEDFD))+
+  geom_vline(xintercept = 0, linetype = 'dashed')+
+  geom_ribbon(data = BoundaryValues, aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
+  geom_ribbon(data = BoundaryValues_P, aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
+  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
+  xlab(expression(paste("Niche Difference: ", 1-rho)))+
+  theme_classic()+
+  coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
+  geom_path(data = OneLine,
+            aes(x, y), col = 'red', linewidth = 1.5)+
+  geom_line(data = BoundaryValues,
+            aes(x, y2), col = 'red', linewidth = 1.5)+
+  geom_point(aes(col = Treatment, MEDND, MEDFD), size = 3)+
+  geom_path(arrow = arrow(length = unit(0.5, "cm")), size =2)+
+  scale_colour_manual(values = c('darkred','blue'))+ 
+  geom_text(data=Labels, aes(x,y, label =Text), size = 3)-> SubPlotA_JustDot
+SubPlotA_JustDot
+```
+
+# Error Bars (95% confidence intervals from )
+
+NB range of options used - Van Dyke et al use +/- 1 SD, Matias et al use 'error bars for niche and fitness differences calculated from propagating the standard error of each parameter of the annual plant model that was obtained from field conditions or maximum likelihood estimations.'
+
+#  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[SUL]/kappa[BIR])) )+
+
+```{r}
+Both_TreatmentsValues %>%
+  filter(#Treatment == 'Safe',
+    Combination  ==SpeciesToPlot ,
+  ) %>% 
+  group_by(Treatment, Combination) %>%
+  summarise( CI0.025_FD = quantile(FitnessDiff  , 0.025),
+             CI0.975_FD = quantile(FitnessDiff  , 0.975),
+             CI0.025_ND = quantile(NicheDiff  , 0.025),
+             CI0.975_ND = quantile(NicheDiff  , 0.975))-> CI_values_Foc_Safe
+
+MedianValues %>%
+  filter( Combination  ==SpeciesToPlot) %>% 
+  left_join(CI_values_Foc_Safe) %>%
+  mutate( Combination=TidyName(Combination) ) %>%
+  ggplot(aes( MEDND,MEDFD ))+
+  geom_vline(xintercept = 0, linetype = 'dashed')+
+  geom_ribbon(data = BoundaryValues, aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
+  geom_ribbon(data = BoundaryValues_P, aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
+  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
+  xlab(expression(paste("Niche Difference: ", 1-rho))) +
+  geom_errorbar(aes(ymin = CI0.025_FD, ymax = CI0.975_FD), size = 0.4, width =0.1 )+
+  geom_errorbarh(aes(xmin = CI0.025_ND, xmax = CI0.975_ND ), size = 0.4  , height=0.1)+
+  coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
+  geom_path(data = OneLine,
+            aes(x, y), col = 'red', size = 1.5)+
+  geom_line(data = BoundaryValues,
+            aes(x, y2), col = 'red', size = 1.5)+
+  geom_point(aes(col = Treatment), size = 3)+
+  geom_path(arrow = arrow(length = unit(0.5, "cm")), size =2)+
+  theme_classic()+
+  scale_colour_manual(values = c('darkred','blue')) -> SubPlotB_Errors
+SubPlotB_Errors
+
+```
+
+
+# Contours
+
+```{r}
+
+Both_TreatmentsValues %>%
+  filter( Combination  ==SpeciesToPlot ,
+          Treatment == 'Para') %>%
+  ggplot(aes(NicheDiff,FitnessDiff ))+
+  geom_vline(xintercept = 0, linetype = 'dashed')+
+  geom_ribbon(data = BoundaryValues,
+              aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
+  geom_ribbon(data = BoundaryValues_P,
+              aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
+  stat_density_2d(aes(fill = ..level..), geom = "polygon", bins = 8)+
+  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
+  xlab(expression(paste("Niche Difference: ", 1-rho)))+
+  coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
+  geom_path(data = OneLine,
+            aes(x, y), col = 'red', size = 1.5)+
+  geom_line(data = BoundaryValues,
+            aes(x, y2), col = 'red', size = 1.5)+
+  scale_fill_gradient(low = 'bisque', high= 'darkred', guide = FALSE,  )+
+  theme_classic()-> focal_Para
+
+Both_TreatmentsValues %>%
+  filter( Combination  ==SpeciesToPlot ,
+          Treatment == 'Safe') %>%
+  ggplot(aes(NicheDiff,FitnessDiff ))+
+  geom_vline(xintercept = 0, linetype = 'dashed')+
+  geom_ribbon(data = BoundaryValues,
+              aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
+  geom_ribbon(data = BoundaryValues_P,
+              aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
+  stat_density_2d(aes(fill = ..level..), geom = "polygon", bins = 8)+
+  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
+  xlab(expression(paste("Niche Difference: ", 1-rho)))+
+  coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
+  geom_path(data = OneLine,
+            aes(x, y), col = 'red', size = 1.5)+
+  geom_line(data = BoundaryValues,
+            aes(x, y2), col = 'red', size = 1.5)+
+  scale_fill_gradient(low = 'slategray1', high= 'blue', guide = FALSE,  )+
+  theme_classic()-> focal_Safe
+
+```
+
+# Full Posterior
+
+```{r}
+Both_TreatmentsValues %>%
+  filter( Combination  ==SpeciesToPlot) %>%
+  arrange(FitnessDiff)%>%
+  ggplot(aes(NicheDiff,FitnessDiff ))+
+  geom_path(data = OneLine,
+            aes(x, y), col = 'red', size = 1.5)+
+  geom_line(data = BoundaryValues,
+            aes(x, y2), col = 'red', size = 1.5)+
+  geom_vline(xintercept = 0, linetype = 'dashed')+
+  geom_ribbon(data = BoundaryValues,
+              aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
+  geom_ribbon(data = BoundaryValues_P,
+              aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
+  geom_point(aes(col = Treatment), size = 0.1)+
+  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
+  xlab(expression(paste("Niche Difference: ", 1-rho)))+
+  coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
+  theme_classic() +
+  geom_path(aes( MEDND,MEDFD ), arrow = arrow(length = unit(0.5, "cm")), size =2,
+            data = filter(MedianValues, Combination  ==SpeciesToPlot) )+
+  scale_colour_manual(values = c('darkred','blue'))-> SubPlotD_FullPost
+SubPlotD_FullPost
+```
+
+# Pie Charts
+
+```{r}
+TidyTable%>% 
+  select(-Check, - (MedianNicheDiff :MedianRho )) %>%
+  filter( Combination  ==SpeciesToPlot) -> d
+
+d%>%
+  ggplot(aes(   MEDND, MEDFD))+
+  geom_path(data = OneLine,
+            aes(x, y), col = 'red', size = 1.5)+
+  geom_line(data = BoundaryValues,
+            aes(x, y2), col = 'red', size = 1.5)+
+  geom_vline(xintercept = 0, linetype = 'dashed')+
+  geom_ribbon(data = BoundaryValues,
+              aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
+  geom_ribbon(data = BoundaryValues_P,
+              aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
+  geom_scatterpie(aes(x = MEDND, y = MEDFD, group = Treatment), data = d,
+                  pie_scale = 50,
+                  cols= c('Species 1 Wins', 'Species 2 Wins','Coexistence' ,'Priority'))+
+  scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
+  scale_fill_manual(name = 'Outcome',
+                    values =c('yellow', 'red', 'darkgreen', 'purple'))+
+  xlab(expression(paste("Niche Difference: ", 1-rho)))+
+  coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
+  geom_point(aes(col = Treatment), size = 5)+ 
+  geom_path(aes( MEDND,MEDFD ), arrow = arrow(length = unit(0.5, "cm")), size =2,
+            data = filter(MedianValues, Combination  ==SpeciesToPlot) )+
+  scale_colour_manual(values = c('darkred','blue'))+ 
+  theme_classic()+
+  guides(col = 'none')+
+  theme(legend.position = c(0.25, 0.7), 
+        legend.box.background = element_rect(colour = 'black',
+                                             linewidth = 1))-> SubPlotE_Pies
+
+SubPlotE_Pies
+```
+
+# Combining
+
+```{r fig.height=10, fig.width=10}
+Top<- plot_grid(SubPlotA_JustDot+guides(col = 'none'),
+                SubPlotB_Errors+guides(col = 'none'),
+                labels = c('A) Best Fit','B) Confidence Intervals'),
+                label_fontface = 'plain',
+                hjust = -0.1, scale=0.9)
+
+Mid<- plot_grid(focal_Para,
+                focal_Safe,ncol = 2,
+                labels = c('C) Contours', ''), label_fontface = 'plain',
+                hjust = -0.1, scale=0.9)
+
+Low <- plot_grid( SubPlotD_FullPost+guides(col = 'none'),
+                  SubPlotE_Pies,
+                  labels = c('D) Posterior Draws','E) Support Summaries'),
+                  label_fontface = 'plain',
+                  hjust = -0.1, scale=0.9)
+
+plot_grid(Top,Mid, Low,ncol=1)
+
+ggsave('Figures/Fig5_PlotOptions.png', width=10, height = 12, dpi = 600, bg = 'white')
+
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```

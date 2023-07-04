@@ -1,0 +1,151 @@
+---
+title: "Code to make example data for Figure 1"
+author: "Chris Terry"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+This script contains code used to make the graphs in figure 1. 
+
+```{R message=FALSE, warning=FALSE}
+library(tidyverse)
+library(cowplot)
+
+```
+
+# Artificial Data Generation
+Target scenario:  In control conditions they coexist, but with the addition of a treatment, species 2  does well
+
+```{r}
+set.seed(1)
+lambda1_CTRL = 13
+lambda1_TREAT = 15
+
+lambda2_CTRL = 8
+lambda2_TREAT = 15
+
+a11_w = 2
+a21_w = 1.5
+a12_w = 1.75
+a22_w = 3
+
+a11_d = 2
+a21_d = 2.2
+a12_d = 1.75
+a22_d = 3
+
+## function
+PlotResponse <- function(lambda, a){
+  
+  
+  df <- data.frame(N_comp =rep( c(0, 2, 4, 10), each = 5))
+  df2 <- data.frame(N_comp =seq(from =0, to = 10, length = 10000))
+  
+  df$Fitness<- lambda / (1 + a*df$N_comp)
+  df2$Fitness<- lambda / (1 + a*df2$N_comp)
+  
+  df$Obs = rpois(length(df$Fitness), df$Fitness)
+  
+  xx<- ggplot(df, aes( x = N_comp))+
+    geom_jitter(aes(y = Obs), height = 0, width= 0.1)+
+    geom_line(aes(y = Fitness), col= 'red', data = df2)+
+    xlab('Competitor Number')+
+    ylab('Number in\nNext Generation')+
+    theme_minimal_grid()
+  
+  return( xx) 
+  
+}
+
+#### Response Surface experiments
+
+##### TREAT
+TREAT_Fits<- plot_grid(PlotResponse(lambda1_TREAT, a11_w)+
+                       xlab('Number of Sp 1\nCompetitors')+
+                       ylab(' Sp 1 in\nNext Generation'),
+                     PlotResponse(lambda1_TREAT, a12_w)+
+                       xlab('Number of Sp 1\nCompetitors')+
+                       ylab(' Sp 1 in\nNext Generation'),
+                     PlotResponse(lambda2_TREAT, a22_w)+
+                       xlab('Number of Sp 2\nCompetitors')+
+                       ylab(' Sp 2 in\nNext Generation'),
+                     PlotResponse(lambda2_TREAT, a21_w)+
+                       xlab('Number of Sp 2\nCompetitors')+
+                       ylab(' Sp 2 in\nNext Generation'),
+                     ncol = 4 )
+
+### CTRL
+CTRL_Fits<-plot_grid(PlotResponse(lambda1_CTRL, a11_d)+
+                      xlab('Number of Sp 1\nCompetitors')+
+                      ylab(' Sp 1 in\nNext Generation'),
+                    PlotResponse(lambda1_CTRL, a12_d)+
+                      xlab('Number of Sp 1\nCompetitors')+
+                      ylab(' Sp 1 in\nNext Generation'),
+                    PlotResponse(lambda2_CTRL, a22_d)+
+                      xlab('Number of Sp 2\nCompetitors')+
+                      ylab(' Sp 2 in\nNext Generation'),
+                    PlotResponse(lambda2_CTRL, a21_d)+
+                      xlab('Number of Sp 2\nCompetitors')+
+                      ylab(' Sp 2 in\nNext Generation'),
+                    ncol = 4)
+
+plot_grid(CTRL_Fits, TREAT_Fits,  ncol = 1, 
+          labels = c('Control',
+                     'Treatment'), scale = 0.9)
+
+ggsave('Figures/Fig1b_Data.png', width = 12, height =6, dpi = 600, bg = 'white')
+
+```
+
+# Plotting Coexistence Plane
+
+```{r warning = FALSE}
+niche_differentiation <- seq(from = -.25, to = 1, by = 0.001)
+niche_overlap <- 1-niche_differentiation
+fitness_ratio_min <- niche_overlap
+fitness_ratio_max <- 1/niche_overlap
+
+coexistarea_df <- data.frame(niche_diff = niche_differentiation,
+                             min_fitness_ratio = fitness_ratio_min,
+                             max_fitness_ratio = fitness_ratio_max)
+
+### Coexistence Plane
+
+FitnessDiff_TREAT = ((lambda1_TREAT-1)/(lambda2_TREAT-1))*sqrt( (a21_w*a21_w)/(a11_w*a12_w)  )
+FitnessDiff_CTRL = ((lambda1_CTRL-1)/(lambda2_CTRL-1))*sqrt( (a21_d*a21_d)/(a11_d*a12_d)  )
+
+NicheDiff_TREAT  = 1- sqrt( (a12_w*a21_w)/(a22_w*a11_w) )
+NicheDiff_CTRL  = 1- sqrt( (a12_d*a21_d)/(a22_d*a11_d) )
+
+
+data.frame( Trial = c('TREAT', 'CTRL'), 
+            FitnessDiff = c( FitnessDiff_TREAT, FitnessDiff_CTRL),
+            NicheDiff = c(NicheDiff_TREAT, NicheDiff_CTRL)) -> CoexistPlane
+
+
+CoexistPlane%>%
+  ggplot()+
+  geom_ribbon(data = coexistarea_df, aes(x = niche_diff, ymin = min_fitness_ratio,
+                                         ymax = max_fitness_ratio), fill = 'grey80') +
+  geom_line(data = coexistarea_df, aes(x = niche_diff, y = max_fitness_ratio)) +
+  geom_line(data = coexistarea_df,  aes(x = niche_diff, y = min_fitness_ratio)) +
+  scale_y_log10()+
+  scale_color_manual(values = c('goldenrod', 'darkblue'))+
+  geom_point(aes( x = NicheDiff, y = FitnessDiff, col = Trial), size = 5)+
+  coord_cartesian(xlim = c(-0.2,0.5), ylim = c(0.5, 2) )+ 
+  theme_classic()+
+  ylab('Fitness Ratio\n(Sp1:Sp2)')+
+  xlab('Stabilising Niche Difference')
+
+CoexistPlane
+
+ggsave('Figures/Fig1c_CoexistPlane.png', width = 5, height =3, dpi = 600, bg = 'white')
+
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```

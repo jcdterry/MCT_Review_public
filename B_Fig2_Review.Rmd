@@ -1,0 +1,67 @@
+---
+title: "Making MCT Review Tile Plot"
+output: html_document
+date: "2023-03-06"
+editor_options: 
+  chunk_output_type: console
+---
+
+This script makes the tile plot in Figure 2 from the spreadsheet of the MCT papers. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(readxl)
+
+
+df<- read_excel('Data/Review of MCT Studies.xlsx', na = 'NA')
+
+
+RS <- df[-1,] %>%
+  filter( Approach == 'RS')
+
+
+RS %>%
+  select( AuthorsShort, Year,Journal,
+          RawData = RawDataScoreCHECKED,
+          FuncForm =TestFuncFormScore,
+          ParamUncert =ParamUncertaintyReportScore,
+          CoexistUncert =CoexistUncertainScore) %>% 
+  mutate( Study = paste0(AuthorsShort, ' (', Year,')\n', Journal),
+          RawData = as.numeric(RawData),
+          FuncForm = as.numeric( FuncForm),
+          ParamUncert= as.numeric(ParamUncert)) %>%
+  pivot_longer( names_to = 'Category',values_to = 'Score',
+                RawData:CoexistUncert) %>%
+  arrange(Year) %>%
+  ggplot(aes( y = reorder(Study, desc(Year) ),
+              x = Category,
+              fill = as.factor(Score)))+
+  geom_tile() +
+  scale_fill_manual(values = c('yellow', 'palegreen', 'darkgreen'),
+                    labels= c( '0' = 'Absent',
+                               '1'= 'Partial',
+                               '2'= 'Full'),
+                    na.value = 'grey', name = 'Score') +
+  scale_y_discrete(name = '')+
+  scale_x_discrete(name = '',
+                   limits = c('RawData','FuncForm','ParamUncert','CoexistUncert'), 
+                   labels =   c('RawData'='Raw\nData',
+                                'FuncForm'= 'Functional\nForm\nTesting',
+                                'ParamUncert'= 'Parameter\nUncertainty',
+                                'CoexistUncert'='Coexistence\nUncertainty\nReporting'  ))+
+
+  theme(panel.background = element_blank())
+
+ggsave('Figures/Figure2.png', bg = 'white', height = 10, width =8 )
+
+```
+
+# Session Info
+```{r}
+sessionInfo()
+```
