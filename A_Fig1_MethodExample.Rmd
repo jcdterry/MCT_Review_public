@@ -36,66 +36,77 @@ a21_d = 2.2
 a12_d = 1.75
 a22_d = 3
 
+
 ## function
-PlotResponse <- function(lambda, a){
+PlotResponse <- function(lambda_treat, a_treat, lambda_ctrl, a_ctrl){
   
-  
+  ### Treatment 
   df <- data.frame(N_comp =rep( c(0, 2, 4, 10), each = 5))
   df2 <- data.frame(N_comp =seq(from =0, to = 10, length = 10000))
   
-  df$Fitness<- lambda / (1 + a*df$N_comp)
-  df2$Fitness<- lambda / (1 + a*df2$N_comp)
+  df$Fitness<- lambda_treat / (1 + a_treat*df$N_comp)
+  df2$Fitness<- lambda_treat / (1 + a_treat*df2$N_comp)
   
   df$Obs = rpois(length(df$Fitness), df$Fitness)
+  df$Treat = 'TREAT'
   
-  xx<- ggplot(df, aes( x = N_comp))+
-    geom_jitter(aes(y = Obs), height = 0, width= 0.1)+
-    geom_line(aes(y = Fitness), col= 'red', data = df2)+
+  ## Control
+  df_ctrl <- data.frame(N_comp =rep( c(0, 2, 4, 10), each = 5))
+  df2_ctrl <- data.frame(N_comp =seq(from =0, to = 10, length = 10000))
+
+  
+  df_ctrl$Fitness<- lambda_ctrl / (1 + a_ctrl*df$N_comp)
+  df2_ctrl$Fitness<- lambda_ctrl / (1 + a_ctrl*df2$N_comp)
+  
+  df_ctrl$Obs = rpois(length(df_ctrl$Fitness), df_ctrl$Fitness)
+  df_ctrl$Treat = 'CTRL'
+
+  ## Combining
+  Raw_df <- bind_rows( df, df_ctrl)
+  
+  
+  ## Plotting
+  
+  xx<- ggplot(Raw_df, aes( x = N_comp, col = Treat))+
+    geom_jitter(aes(y = Obs), height = 0, width= 0.2, alpha = 0.5)+
+    geom_line(aes(y = Fitness), col= 'darkblue', data = df2)+
+        geom_line(aes(y = Fitness), col= 'goldenrod', data = df2_ctrl)+
     xlab('Competitor Number')+
     ylab('Number in\nNext Generation')+
-    theme_minimal_grid()
-  
-  return( xx) 
-  
+    theme_classic()+
+    scale_x_continuous(breaks = c( 0, 2, 4, 10))+
+    theme(panel.grid.major  = element_blank(), 
+          panel.grid.minor  = element_blank(), )+
+    scale_color_manual(values = c('goldenrod', 'darkblue'), name = 'Trial')
+    return( xx) 
 }
 
 #### Response Surface experiments
 
-##### TREAT
-TREAT_Fits<- plot_grid(PlotResponse(lambda1_TREAT, a11_w)+
+TREAT_Fits<- plot_grid(PlotResponse(lambda_treat = lambda1_TREAT,a_treat =  a11_w,
+                                    lambda_ctrl = lambda1_CTRL, a_ctrl = a11_d )+
+                       xlab('')+
+                       ylab('Sp 1 Fecundity')+
+                         guides(col = 'none'),
+                     PlotResponse(lambda_treat = lambda1_TREAT, a_treat = a12_w,
+                                  lambda1_CTRL, a12_d)+
+                       xlab('')+
+                       ylab('')+
+                         guides(col = 'none'),
+                           PlotResponse(lambda2_TREAT, a21_w,lambda2_CTRL, a21_d)+
                        xlab('Number of Sp 1\nCompetitors')+
-                       ylab(' Sp 1 in\nNext Generation'),
-                     PlotResponse(lambda1_TREAT, a12_w)+
-                       xlab('Number of Sp 1\nCompetitors')+
-                       ylab(' Sp 1 in\nNext Generation'),
-                     PlotResponse(lambda2_TREAT, a22_w)+
+                       ylab('Sp 2 Fecundity')+
+                         guides(col = 'none'),
+                     PlotResponse(lambda2_TREAT, a22_w,lambda2_CTRL, a22_d)+
                        xlab('Number of Sp 2\nCompetitors')+
-                       ylab(' Sp 2 in\nNext Generation'),
-                     PlotResponse(lambda2_TREAT, a21_w)+
-                       xlab('Number of Sp 2\nCompetitors')+
-                       ylab(' Sp 2 in\nNext Generation'),
-                     ncol = 4 )
+                       ylab('')+
+                       theme(legend.position = c(0.7, 0.8), 
+                             legend.background = element_rect(fill = 'white')),
+                     ncol = 2 )
 
-### CTRL
-CTRL_Fits<-plot_grid(PlotResponse(lambda1_CTRL, a11_d)+
-                      xlab('Number of Sp 1\nCompetitors')+
-                      ylab(' Sp 1 in\nNext Generation'),
-                    PlotResponse(lambda1_CTRL, a12_d)+
-                      xlab('Number of Sp 1\nCompetitors')+
-                      ylab(' Sp 1 in\nNext Generation'),
-                    PlotResponse(lambda2_CTRL, a22_d)+
-                      xlab('Number of Sp 2\nCompetitors')+
-                      ylab(' Sp 2 in\nNext Generation'),
-                    PlotResponse(lambda2_CTRL, a21_d)+
-                      xlab('Number of Sp 2\nCompetitors')+
-                      ylab(' Sp 2 in\nNext Generation'),
-                    ncol = 4)
+TREAT_Fits
 
-plot_grid(CTRL_Fits, TREAT_Fits,  ncol = 1, 
-          labels = c('Control',
-                     'Treatment'), scale = 0.9)
-
-ggsave('Figures/Fig1b_Data.png', width = 12, height =6, dpi = 600, bg = 'white')
+ggsave('Figures/Fig1b_Data.png', width = 4, height =4, dpi = 600, bg = 'white')
 
 ```
 

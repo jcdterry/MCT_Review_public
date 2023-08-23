@@ -211,8 +211,8 @@ Param_df%>%
                      'intra' = 'α Interspecific',
                      'lambda'= 'λ')) %>%
   ggplot(aes( y =Model , x = mean))+
-  geom_segment(aes( x= q5, xend = q95, yend = Model , col =Model ), linewidth = 3)+
-  geom_segment(aes( x= q20, xend = q80, yend = Model, col =Model  ), linewidth = 5)+
+  geom_segment(aes( x= q5, xend = q95, yend = Model , col =Model ), linewidth = 2)+
+  geom_segment(aes( x= q20, xend = q80, yend = Model, col =Model  ), linewidth = 4)+
   geom_point(size =2)+
   # geom_errorbarh(aes( xmin = q5, xmax = q95))+
   facet_grid(Focal~VAR, 
@@ -242,66 +242,71 @@ coexistarea_df <- data.frame(niche_diff = niche_differentiation,
                              min_fitness_ratio = fitness_ratio_min,
                              max_fitness_ratio = fitness_ratio_max)
 
-## Log scale
-fit_m1_log_splitsigma %>%
-  posterior_summary() %>%
-  as_tibble(rownames = 'Var')-> Log_Estimates
+## Log scale  ### Full posterior
+LOG_post <- as_draws_df(fit_m1_log_splitsigma)
+ND_logged = 1 - sqrt((LOG_post$b_intra_FocalSp1  *LOG_post$b_intra_FocalSp2) / (LOG_post$b_inter_FocalSp1 * LOG_post$b_inter_FocalSp2)    )
+RFD_logged =  ((LOG_post$b_lambda_FocalSp1-1) / (LOG_post$b_lambda_FocalSp2-1)) *  sqrt((LOG_post$b_inter_FocalSp2*LOG_post$b_intra_FocalSp2) / (LOG_post$b_inter_FocalSp1 * LOG_post$b_intra_FocalSp1  )    )
 
-Ls <- as.list(Log_Estimates$Estimate)
-names(Ls)<- Log_Estimates$Var
-Ls
-ND_logged = 1 - sqrt((Ls$b_intra_FocalSp1  *Ls$b_intra_FocalSp2) / (Ls$b_inter_FocalSp1 * Ls$b_inter_FocalSp2)    )
-RFD_logged =  ((Ls$b_lambda_FocalSp1-1) / (Ls$b_lambda_FocalSp2-1)) *  sqrt((Ls$b_inter_FocalSp2*Ls$b_intra_FocalSp2) / (Ls$b_inter_FocalSp1 * Ls$b_intra_FocalSp1  )    )
-
-### Natural Scale
-
-fit_m1_direct_splitsigma %>%
-  posterior_summary() %>%
-  as_tibble(rownames = 'Var')-> Nat_Estimates
-
-Ns <- as.list(Nat_Estimates$Estimate)
-names(Ns)<- Nat_Estimates$Var
-Ns
+### Natural Scale # Full posterior
+Ns <- as_draws_df(fit_m1_direct_splitsigma)
 ND_natural = 1 - sqrt((Ns$b_intra_FocalSp1  *Ns$b_intra_FocalSp2) / (Ns$b_inter_FocalSp1 * Ns$b_inter_FocalSp2)    )
 RFD_natural =  ((Ns$b_lambda_FocalSp1-1) / (Ns$b_lambda_FocalSp2-1)) *  sqrt((Ns$b_inter_FocalSp2*Ns$b_intra_FocalSp2) / (Ns$b_inter_FocalSp1 * Ns$b_intra_FocalSp1  )    )
 
-### Negative Binomial
-
-fit_m1_direct_NegBimom %>%
-  posterior_summary() %>%
-  as_tibble(rownames = 'Var')-> NB_Estimates
-
-NBs <- as.list(NB_Estimates$Estimate)
-names(NBs)<- NB_Estimates$Var
-NBs
+### Negative Binomial # Full posterior
+NBs <- as_draws_df(fit_m1_direct_NegBimom)
 ND_NegBimom = 1 - sqrt((NBs$b_intra_FocalSp1  *NBs$b_intra_FocalSp2) / (NBs$b_inter_FocalSp1 * NBs$b_inter_FocalSp2)    )
 RFD_NegBimom =  ((NBs$b_lambda_FocalSp1-1) / (NBs$b_lambda_FocalSp2-1)) *  sqrt((NBs$b_inter_FocalSp2*NBs$b_intra_FocalSp2) / (NBs$b_inter_FocalSp1 * NBs$b_intra_FocalSp1  )    )
 
-### Pois
-
-fit_m1_direct_Poiss %>%
-  posterior_summary() %>%
-  as_tibble(rownames = 'Var')-> POI_Estimates
-
-POI <- as.list(POI_Estimates$Estimate)
-names(POI)<- POI_Estimates$Var
-POI
+### Pois # Full posterior
+POI <- as_draws_df(fit_m1_direct_Poiss)
 ND_Poiss = 1 - sqrt((POI$b_intra_FocalSp1  *POI$b_intra_FocalSp2) / (POI$b_inter_FocalSp1 * POI$b_inter_FocalSp2)    )
 RFD_Poiss =  ((POI$b_lambda_FocalSp1-1) / (POI$b_lambda_FocalSp2-1)) *  sqrt((POI$b_inter_FocalSp2*POI$b_intra_FocalSp2) / (POI$b_inter_FocalSp1 * POI$b_intra_FocalSp1  )    )
+
+
 
 ## 'True' Values
 ND_true = 1 - sqrt((a11 *a22) / (a12 * a21)    )
 RFD_true =  ((lam_1-1)/ (lam_2-1)) *  sqrt((a21*a22) / (a12* a11 )    )
 
 
-CoexistPlane <-data.frame(  X = c( 'Gaussian',
-                                   'Log transform,\nthen Gaussian',
-                                   'Poisson',
-                                   'Negative-Binomial','True' ),
-                            NicheDiffs = c(ND_Poiss,  ND_logged, ND_natural,ND_NegBimom,   ND_true),
-                            RelFitDiff = c(RFD_Poiss, RFD_logged,RFD_natural,RFD_NegBimom, RFD_true))
+CoexistPlane <-data.frame(X = c( 'Gaussian',
+                                 'Log transform,\nthen Gaussian',
+                                 'Poisson',
+                                 'Negative-Binomial','True' ),
+                          NicheDiffsMEAN = c(  mean(ND_natural), 
+                                               mean(ND_logged), 
+                                               mean(ND_Poiss),
+                                               mean(ND_NegBimom), 
+                                               ND_true),
+                          RelFitDiffMEAN = c( mean(RFD_natural),
+                                              mean(RFD_logged),
+                                              mean(RFD_Poiss),
+                                              mean(RFD_NegBimom),
+                                              RFD_true),
+                          NicheDiffsLOW = c( quantile2(ND_natural, 0.05),
+                                             quantile2(ND_logged, 0.05), 
+                                             quantile2(ND_Poiss, 0.05), 
+                                             quantile2(ND_NegBimom, 0.05), 
+                                             ND_true),
+                          RelFitDiffLOW = c(quantile2(RFD_natural, 0.05),
+                                            quantile2(RFD_logged, 0.05),
+                                            quantile2(RFD_Poiss, 0.05),
+                                            quantile2(RFD_NegBimom, 0.05),
+                                            RFD_true),
+                          NicheDiffsHIGH = c( quantile2(ND_natural, 0.95),
+                                              quantile2(ND_logged, 0.95), 
+                                              quantile2(ND_Poiss, 0.95), 
+                                              quantile2(ND_NegBimom, 0.95), 
+                                              ND_true),
+                          RelFitDiffHIGH = c(quantile2(RFD_natural, 0.95),
+                                             quantile2(RFD_logged, 0.95),
+                                             quantile2(RFD_Poiss, 0.95),
+                                             quantile2(RFD_NegBimom, 0.95),
+                                             RFD_true))
+
 
 CoexistPlane
+
 
 FourCols <-RColorBrewer::brewer.pal(4, 'Dark2')
 
@@ -311,7 +316,11 @@ CoexistPlane %>%
                                          ymax = max_fitness_ratio), fill = 'grey80')+
   geom_line(data = coexistarea_df, aes(x = niche_diff, y = max_fitness_ratio)) +
   geom_line(data = coexistarea_df,  aes(x = niche_diff, y = min_fitness_ratio)) +
-  geom_point( aes( x = NicheDiffs, y = RelFitDiff, col = X), size = 5)+
+  geom_point( aes( x = NicheDiffsMEAN, y = RelFitDiffMEAN, col = X), size = 4)+
+  geom_errorbar( aes( x = NicheDiffsMEAN, ymin = RelFitDiffLOW,
+                      ymax = RelFitDiffHIGH, col = X))+
+  geom_errorbarh( aes( xmin = NicheDiffsLOW, xmax = NicheDiffsHIGH,
+                       y = RelFitDiffMEAN, col = X))+
   scale_y_log10()+
   coord_cartesian(xlim = c(-0.05,0.5), ylim = c(0.5, 2) )+
   scale_colour_manual(name = 'Model', values = c(FourCols, 'black' ))+
@@ -328,6 +337,75 @@ Bottom<- plot_grid(B_Param_estimates,  C_CorexistPlane, labels = c('B', 'C'))
 plot_grid(A_RawData,Bottom, nrow = 2, labels = c('A', ''))
 ggsave('Figures/Fig4_ErrorStruct.png', width = 10, height = 6, dpi = 600, bg = 'white')
 ```
+
+
+# Plotting model fits to data
+
+
+
+```{r}
+
+Ls = as.list(colMeans(LOG_post))
+Ns = as.list(colMeans(Ns))
+NBs = as.list(colMeans(NBs)  )
+POI = as.list(colMeans(POI))
+
+
+expand.grid(Focal = c('Sp1', 'Sp2'), 
+            N_focal = 0:15,
+            N_comp = 0:15  )%>%
+  filter( N_focal ==0 | N_comp == 0) %>%
+  mutate( Test = ifelse( N_comp == 0, 'INTRA', 'INTER')) %>%
+  mutate( `Log transform,\nthen Gaussian` = ifelse(Focal =='Sp1',
+                                                   Ls$b_lambda_FocalSp1 / (1 + Ls$b_intra_FocalSp1 * N_focal  + Ls$b_inter_FocalSp1 * N_comp),
+                                                   Ls$b_lambda_FocalSp2 / (1 + Ls$b_intra_FocalSp2 * N_focal  + Ls$b_inter_FocalSp2 * N_comp)),
+          Gaussian = ifelse(Focal =='Sp1',
+                            Ns$b_lambda_FocalSp1 / (1 + Ns$b_intra_FocalSp1 * N_focal  + Ns$b_inter_FocalSp1 * N_comp),
+                            Ns$b_lambda_FocalSp2 / (1 + Ns$b_intra_FocalSp2 * N_focal  + Ns$b_inter_FocalSp2 * N_comp)),
+          `Negative-Binomial` = ifelse(Focal =='Sp1',
+                                       NBs$b_lambda_FocalSp1 / (1 + NBs$b_intra_FocalSp1 * N_focal  + NBs$b_inter_FocalSp1 * N_comp),
+                                       NBs$b_lambda_FocalSp2 / (1 + NBs$b_intra_FocalSp2 * N_focal  + NBs$b_inter_FocalSp2 * N_comp)),
+          Poisson = ifelse(Focal =='Sp1',
+                           POI$b_lambda_FocalSp1 / (1 + POI$b_intra_FocalSp1 * N_focal  + POI$b_inter_FocalSp1 * N_comp),
+                           POI$b_lambda_FocalSp2 / (1 + POI$b_intra_FocalSp2 * N_focal  + POI$b_inter_FocalSp2 * N_comp))) -> Predictions
+
+
+Predictions %>%
+  pivot_longer(names_to = 'Model',
+               values_to = 'Prediction',
+               cols = 5:8)%>%
+  mutate(Competitors = N_focal+N_comp) %>%
+  mutate(Competition= recode(Test,
+                             'INTRA' = 'Intraspecific',
+                             'INTER' = 'Interspecific')) -> PredictionsLong
+
+BothData%>%
+  mutate(Competitors = N_focal+N_comp) %>%
+  mutate(Competition= recode(Test,
+                             'INTRA' = 'Intraspecific',
+                             'INTER' = 'Interspecific')) %>%
+  ggplot(aes( x =Competitors ))+
+  geom_point(aes(y=ObsSeeds), alpha = 0.2, shape = 1)+
+  geom_point(aes(y=ExpectedSeeds))+
+  geom_line(aes(y=ExpectedSeeds))+
+  geom_line(aes(y=Prediction, col = Model), data = PredictionsLong)+
+  facet_grid(Focal ~Competition, 
+             scales = 'free_y',
+             labeller = label_both)+
+  scale_colour_manual(name = 'Model', values =FourCols)+
+  theme_minimal()+
+  theme(legend.position = 'bottom')+
+  xlab('Number of Competitors')+
+  ylab('Observed Focal Species Output\nper individual')+
+  scale_x_continuous(breaks = c(0,Levels))+
+  scale_y_log10()-> SI2
+
+ggsave( 'Figures/SI2.png',SI2,  height= 6, width=6, dpi = 600, bg = 'white')
+
+```
+
+
+
 
 # Session Info
 ```{r}

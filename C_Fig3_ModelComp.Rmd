@@ -1,5 +1,5 @@
 ---
-title: "Model structure comparison"
+title: "Comparison of different model structures"
 author: "Chris Terry"
 date: "`r Sys.Date()`"
 output: 
@@ -16,6 +16,8 @@ library(tidyverse)
 library(brms)
 library(cowplot)
 library(tidybayes)
+library(bayestestR)
+library(ggstance)
 ```
 
 # Building artificial data
@@ -25,10 +27,9 @@ The basic model has two species competing. The 'true' data is taken from a model
 $$ \dfrac{N_{t+1}}{ g N_{t}} = \dfrac{\lambda}{ (1+ cN_t + a C)^\theta} $$ where $N$ is the number of the focal species, $C$ is the number of the competitor species, and $a$ $b$ and $c$ are fit parameters describing the shape of the competitive response surface. The parameter 'c' is moved inside the bracket compared to the orginal to simplify interpretation. g is 'germination success' if main count is of seeds but Nt is established (germinated) plants. Poisson noise added to raw observations, but then dividing by pre-identified germination success.
 
 ```{r message=FALSE, warning=FALSE}
-set.seed(1)
+set.seed(3)
 
-g = 0.1
-
+g=0.1
 lamA = 200
 interA = 0.3
 intraA = 0.4
@@ -44,17 +45,12 @@ TestDensIntra<- c(0,1,5, 10,15, 20, 25, 30)
 TestDensInter <- c(5, 15, 30)
 
 ### NB counts are number of competitors (i.e. excluding the focal individual!)
-
 Intra_SpA <- data.frame(SpA = rep(TestDensIntra, each =8), SpB = 0, Type = 'INTRA_A')
 Intra_SpB <- data.frame(SpA = 0, SpB =rep(TestDensIntra, each =8), Type = 'INTRA_B') 
 Inter_SpA <- data.frame(SpA = 0, SpB =rep(TestDensIntra, each =8), Type = 'INTER_Asimple')
 Inter_SpB <- data.frame(SpA = rep(TestDensIntra, each =8), SpB= 0, Type = 'INTER_Bsimple') 
 
-# Comp <- expand.grid(SpA = rep(TestDensInter, each =3),
-#                     SpB =rep(TestDensInter, each =3), Type = 'INTER')
-# 
-bind_rows(Intra_SpA, Intra_SpB,
-          #Comp,                                      ## not including any multi-species trials - just doing the single competitors
+bind_rows(Intra_SpA, Intra_SpB,  ## not including any multi-species trials - just doing the single competitors
           Inter_SpA,Inter_SpB) %>%
   mutate( SpA_Focal_Exp = lamA / ((1+ (intraA*SpA + interA*SpB))^thetaA),
           SpB_Focal_Exp = lamB / ((1+ (intraB*SpB + interB*SpA))^thetaB)) %>%
@@ -67,6 +63,9 @@ bind_rows(Intra_SpA, Intra_SpB,
 ## https://www.wolframalpha.com/input?i=1%2Fg%3D+L%2F%28%281%2BcA%29%5Eb%29%2C+solve+for+A
 
 MonoEq_TRUE = ( ((1/(g* lamA))^(-1/thetaA)) -1 )/intraA
+SpBMonoEq_TRUE = ( ((1/(g* lamB))^(-1/thetaB)) -1 )/intraB
+
+SpA_InvFecund_TRUE  = g* lamA / ((1+ (interA*SpBMonoEq_TRUE))^thetaA)
 SpB_InvFecund_TRUE  = g* lamB / ((1+ (interB*MonoEq_TRUE))^thetaB)
 
 DataExp$SpA_Obs <- rpois(n = nrow(DataExp), lambda = DataExp$SpA_Focal_Exp)*g   ## dividing by germnation rate here
@@ -75,10 +74,13 @@ DataExp$SpB_Obs <- rpois(n = nrow(DataExp), lambda = DataExp$SpB_Focal_Exp)*g   
 MonoEq_TRUE
 SpB_InvFecund_TRUE
 
-
 DataforA <- DataExp %>% mutate(ObsPerFocal = SpA_Obs) %>% filter( !is.na(ObsPerFocal))
 DataforB <- DataExp %>% mutate(ObsPerFocal = SpB_Obs) %>% filter( !is.na(ObsPerFocal))
+```
 
+## Plotting Raw Data
+
+```{r}
 filter(DataforA, SpB==0)%>%
   ggplot(aes(x = SpA, y = ObsPerFocal)) +
   geom_hline(yintercept = 1, linetype=2)+
@@ -134,68 +136,75 @@ SpB_bayes_fit_5<- update(SpA_bayes_fit_5, newdata = DataforB) %>% add_criterion(
 SpB_bayes_fit_6<- update(SpA_bayes_fit_6, newdata = DataforB) %>% add_criterion("loo")
 
 ## Saving Fits 
-save(SpA_bayes_fit_2, file = 'ModelFits/SpA_bayes_fit_2')
-save(SpA_bayes_fit_3, file = 'ModelFits/SpA_bayes_fit_3')
-save(SpA_bayes_fit_4, file = 'ModelFits/SpA_bayes_fit_4')
-save(SpA_bayes_fit_5, file = 'ModelFits/SpA_bayes_fit_5')
-save(SpA_bayes_fit_6, file = 'ModelFits/SpA_bayes_fit_6')
-save(SpB_bayes_fit_2, file = 'ModelFits/SpB_bayes_fit_2')
-save(SpB_bayes_fit_3, file = 'ModelFits/SpB_bayes_fit_3')
-save(SpB_bayes_fit_4, file = 'ModelFits/SpB_bayes_fit_4')
-save(SpB_bayes_fit_5, file = 'ModelFits/SpB_bayes_fit_5')
-save(SpB_bayes_fit_6, file = 'ModelFits/SpB_bayes_fit_6')
+save(SpA_bayes_fit_2, file = 'ModelFits/orig fits3/SpA_bayes_fit_2')
+save(SpA_bayes_fit_3, file = 'ModelFits/orig fits3/SpA_bayes_fit_3')
+save(SpA_bayes_fit_4, file = 'ModelFits/orig fits3/SpA_bayes_fit_4')
+save(SpA_bayes_fit_5, file = 'ModelFits/orig fits3/SpA_bayes_fit_5')
+save(SpA_bayes_fit_6, file = 'ModelFits/orig fits3/SpA_bayes_fit_6')
+save(SpB_bayes_fit_2, file = 'ModelFits/orig fits3/SpB_bayes_fit_2')
+save(SpB_bayes_fit_3, file = 'ModelFits/orig fits3/SpB_bayes_fit_3')
+save(SpB_bayes_fit_4, file = 'ModelFits/orig fits3/SpB_bayes_fit_4')
+save(SpB_bayes_fit_5, file = 'ModelFits/orig fits3/SpB_bayes_fit_5')
+save(SpB_bayes_fit_6, file = 'ModelFits/orig fits3/SpB_bayes_fit_6')
 ```
 
 ### Loading Fits
 
 ```{r}
-load(file = 'ModelFits/SpA_bayes_fit_2')
-load(file = 'ModelFits/SpA_bayes_fit_3')
-load(file = 'ModelFits/SpA_bayes_fit_4')
-load(file = 'ModelFits/SpA_bayes_fit_5')
-load(file = 'ModelFits/SpA_bayes_fit_6')
-load(file = 'ModelFits/SpB_bayes_fit_2')
-load(file = 'ModelFits/SpB_bayes_fit_3')
-load(file = 'ModelFits/SpB_bayes_fit_4')
-load(file = 'ModelFits/SpB_bayes_fit_5')
-load(file = 'ModelFits/SpB_bayes_fit_6')
-```
+load(file = 'ModelFits/orig fits3/SpA_bayes_fit_2')
+load(file = 'ModelFits/orig fits3/SpA_bayes_fit_3')
+load(file = 'ModelFits/orig fits3/SpA_bayes_fit_4')
+load(file = 'ModelFits/orig fits3/SpA_bayes_fit_5')
+load(file = 'ModelFits/orig fits3/SpA_bayes_fit_6')
+load(file = 'ModelFits/orig fits3/SpB_bayes_fit_2')
+load(file = 'ModelFits/orig fits3/SpB_bayes_fit_3')
+load(file = 'ModelFits/orig fits3/SpB_bayes_fit_4')
+load(file = 'ModelFits/orig fits3/SpB_bayes_fit_5')
+load(file = 'ModelFits/orig fits3/SpB_bayes_fit_6')
 
-
-
-## Model Comparisons
-
-```{r}
-loo_compare( list(m2 = SpA_bayes_fit_2$criteria$loo,
-                  m3 = SpA_bayes_fit_3$criteria$loo,
-                  m4 = SpA_bayes_fit_4$criteria$loo,
-                  m5 = SpA_bayes_fit_5$criteria$loo,
-                  m6 = SpA_bayes_fit_6$criteria$loo))
-
-loo_compare( list(m2 = SpB_bayes_fit_2$criteria$loo,
-                  m3 = SpB_bayes_fit_3$criteria$loo,
-                  m4 = SpB_bayes_fit_4$criteria$loo,
-                  m5 = SpB_bayes_fit_5$criteria$loo,
-                  m6 = SpB_bayes_fit_6$criteria$loo))
-```
-
-## Estimates for SpA monoculture equilrbium
-
-```{R message=FALSE, warning=FALSE}
 
 ExtractParams <- function(Model){
   Means<-summarise_draws(Model)[,1:2] 
   params <-as.list(Means$mean); names(params)<-Means$variable
   return(params)
 }
+```
 
+## Extracting Values
+
+Propogating full posterior
+
+```{r}
 Mod2_SpA <- ExtractParams(SpA_bayes_fit_2)
 Mod3_SpA <- ExtractParams(SpA_bayes_fit_3)
 Mod4_SpA <- ExtractParams(SpA_bayes_fit_4)
 Mod5_SpA <- ExtractParams(SpA_bayes_fit_5)
 Mod6_SpA <- ExtractParams(SpA_bayes_fit_6)
-#Mod7_SpA <- ExtractParams(SpA_bayes_fit_7)
 
+
+Mod2_SpA <- SpA_bayes_fit_2 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod3_SpA <- SpA_bayes_fit_3 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod4_SpA <- SpA_bayes_fit_4 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod5_SpA <- SpA_bayes_fit_5 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod6_SpA <- SpA_bayes_fit_6 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept )
+
+Mod2_SpB <- ExtractParams(SpB_bayes_fit_2)
+Mod3_SpB <- ExtractParams(SpB_bayes_fit_3)
+Mod4_SpB <- ExtractParams(SpB_bayes_fit_4)
+Mod5_SpB <- ExtractParams(SpB_bayes_fit_5)
+Mod6_SpB <- ExtractParams(SpB_bayes_fit_6)
+
+Mod2_SpB <- SpB_bayes_fit_2 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod3_SpB <- SpB_bayes_fit_3 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod4_SpB <- SpB_bayes_fit_4 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod5_SpB <- SpB_bayes_fit_5 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept ) 
+Mod6_SpB <- SpB_bayes_fit_6 %>% spread_draws(b_lambda_Intercept,b_p1_Intercept,b_p2_Intercept )
+
+```
+
+## Calculating Monoculture equilibria and invasion growth rates
+
+```{r}
 ## Model 2  ObsPerFocal~lambda-p1*SpA-p2*SpB,    
 ## (lambda-1) /(a)
 MonoEq_2 = (Mod2_SpA$b_lambda_Intercept-1) /  Mod2_SpA$b_p1_Intercept 
@@ -215,23 +224,17 @@ MonoEq_5 = (Mod5_SpA$b_lambda_Intercept-1)/Mod5_SpA$b_p1_Intercept
 ## Model 6 ObsPerFocal~lambda/(1+(SpA^p1)+(SpB^p2)),           
 ## MonoEq_6 = (lambda-1)^(1/a)  ## 
 MonoEq_6 = (Mod6_SpA$b_lambda_Intercept-1)^(1/Mod6_SpA$b_p1_Intercept)  ## 
-```
-
-## Invasion Growth Rate Estimates of Species B:
-
-```{R message=FALSE, warning=FALSE}
-Mod2_SpB <- ExtractParams(SpB_bayes_fit_2)
-Mod3_SpB <- ExtractParams(SpB_bayes_fit_3)
-Mod4_SpB <- ExtractParams(SpB_bayes_fit_4)
-Mod5_SpB <- ExtractParams(SpB_bayes_fit_5)
-Mod6_SpB <- ExtractParams(SpB_bayes_fit_6)
 
 SpB_InvFecund2 <- Mod2_SpB$b_lambda_Intercept-Mod2_SpB$b_p1_Intercept*MonoEq_2               
 SpB_InvFecund3 <- Mod3_SpB$b_lambda_Intercept/exp(Mod3_SpB$b_p1_Intercept*MonoEq_3)        
 SpB_InvFecund4 <- Mod4_SpB$b_lambda_Intercept/exp(Mod4_SpB$b_p1_Intercept*log(MonoEq_4+1))
 SpB_InvFecund5 <- Mod5_SpB$b_lambda_Intercept/(1+Mod5_SpB$b_p1_Intercept*MonoEq_5)              
 SpB_InvFecund6 <- Mod6_SpB$b_lambda_Intercept/(1+(MonoEq_6^Mod6_SpB$b_p1_Intercept))          
+```
 
+## Finding mean and 90% interval of IGRs
+
+```{r message=FALSE, warning=FALSE}
 data.frame(SpA =  seq(0,40, by = 0.1),
            SpB = 0) %>%  
   mutate(ID = 1:n()) %>%
@@ -264,18 +267,57 @@ data.frame(SpA = seq(0,40, by = 0.1),SpB = 0) %>%
           ExpAdultsPerFocal = g * SpB_ExpSeedsPerFocal) -> DataExp_B_Invasion
 
 
-data.frame(Model = c('Mod_2_LV'  ,'Mod_3_Exp' ,'Mod_4_EBH', 'Mod_5_BH'  ,
-                     'Mod_6_Exp' ,  'MOD_TRUE'),
+data.frame(Model = c(rep(c('Mod_2_LV'  ,'Mod_3_Exp' ,'Mod_4_EBH', 'Mod_5_BH'  ,
+                           'Mod_6_Exp'), each = 4000),  'MOD_TRUE'),
            MonoEq = c( MonoEq_2, MonoEq_3, MonoEq_4, MonoEq_5, MonoEq_6, MonoEq_TRUE),
            InvasionFecund = c(SpB_InvFecund2,SpB_InvFecund3,
                               SpB_InvFecund4,SpB_InvFecund5,
-                              SpB_InvFecund6, SpB_InvFecund_TRUE)) -> KeyValuesDiffMods
+                              SpB_InvFecund6, SpB_InvFecund_TRUE)) -> fullpost
+
+HDI2eq <- fullpost %>% filter(Model == "Mod_2_LV") %>% bayestestR::hdi()
+HDI3eq <- fullpost %>% filter(Model == "Mod_3_Exp") %>% bayestestR::hdi()
+HDI4eq <- fullpost %>% filter(Model == "Mod_4_EBH") %>% bayestestR::hdi()
+HDI5eq <- fullpost %>% filter(Model == "Mod_5_BH") %>% bayestestR::hdi()
+HDI6eq <- fullpost %>% filter(Model == "Mod_6_Exp") %>% bayestestR::hdi()
+
+mean2eq <- fullpost %>% filter(Model == "Mod_2_LV") %>% select(-1) %>% colMeans(na.rm = TRUE)
+mean3eq <- fullpost %>% filter(Model == "Mod_3_Exp")  %>% select(-1) %>% colMeans(na.rm = TRUE)
+mean4eq <- fullpost %>% filter(Model == "Mod_4_EBH")  %>% select(-1) %>% colMeans(na.rm = TRUE)
+mean5eq <- fullpost %>% filter(Model == "Mod_5_BH")  %>% select(-1) %>% colMeans(na.rm = TRUE)
+mean6eq <- fullpost %>% filter(Model == "Mod_6_Exp")  %>% select(-1) %>% colMeans(na.rm = TRUE)
+
+fullpost %>%
+  group_by(Model)%>%
+  summarise( MeanMonoEq = mean(MonoEq ), 
+             MeanInvasionFecund = mean(InvasionFecund))
+
+Model = c('Mod_2_LV'  ,'Mod_3_Exp' ,'Mod_4_EBH', 'Mod_5_BH', 'Mod_6_Exp')
+CIhi_eq = c(HDI2eq$CI_high[1], HDI3eq$CI_high[1],
+            HDI4eq$CI_high[1],HDI5eq$CI_high[1], HDI6eq$CI_high[1])
+CIlo_eq = c(HDI2eq$CI_low[1], HDI3eq$CI_low[1],
+            HDI4eq$CI_low[1],  HDI5eq$CI_low[1],HDI6eq$CI_low[1])
+ypos_eq = c(-3, -2.5, -2, -1.5, -1)/2
+xval_eq = c(mean2eq[1], mean3eq[1],
+            mean4eq[1], mean5eq[1],  mean6eq[1])
+segdat_equil = data.frame(Model, CIlo_eq, CIhi_eq, ypos_eq, xval_eq)
+
+CIhi_inv = c(HDI2eq$CI_high[2],  HDI3eq$CI_high[2],
+             HDI4eq$CI_high[2], HDI5eq$CI_high[2], HDI6eq$CI_high[2])
+CIlo_inv = c(HDI2eq$CI_low[2], HDI3eq$CI_low[2],
+             HDI4eq$CI_low[2],  HDI5eq$CI_low[2], HDI6eq$CI_low[2])
+xpos_inv = c(0,1,2,3,4)+34
+yval_inv = c(mean2eq[2],  mean3eq[2],
+             mean4eq[2], mean5eq[2], mean6eq[2])
+segdat_inv = data.frame(Model, CIlo_inv, CIhi_inv, xpos_inv, yval_inv)
+
 ```
 
 # Plots
 
-## Species A monoculture 
-```{r message=FALSE, warning=FALSE}
+## Plot A
+
+```{r}
+
 Colours <- c( 'Mod_2_LV'='#648FFF' , 'Mod_3_Exp' = '#785EF0' ,
               'Mod_4_EBH' = '#DC267F','Mod_5_BH' ='#FE6100'  ,
               'Mod_6_Exp'= '#FFB000',  'MOD_TRUE' ='black')# IBM design library colours
@@ -286,73 +328,132 @@ Mean_Epred_allMods %>%
                values_to = 'Prediction') %>%
   mutate(Prediction = ifelse(Prediction <0, 0.001,  Prediction) ) %>%
   ggplot(aes(x = SpA)) +
-    geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
-  geom_line(aes(y = Prediction, col = Model), size =1.5)+
-  geom_line(aes(y = ExpAdultsPerFocal), data = DataExp_Across, size =2)+
-  geom_hline(yintercept = 1, linetype = 'dashed')+
-  geom_point(aes(y = ObsPerFocal), data = filter(DataforA, SpB==0), shape =4) +
+   geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
+  geom_line(aes(y = Prediction, col = Model))+
+  geom_line(aes(y = ExpAdultsPerFocal), data = DataExp_Across, linewidth =1)+
+  geom_point(aes(y = ObsPerFocal), data = filter(DataforA, SpB==0),
+             shape = 1, size = 3, alpha = 0.75) +
+  geom_point(x=MonoEq_TRUE, y = 1,  size = 3, alpha = 0.75, shape = 4) +
   theme_minimal()+
   theme(legend.position = 'bottom', 
         panel.grid  =  element_blank())+
   scale_color_manual(values = Colours)+
   scale_fill_manual(values = Colours)+
-  scale_y_log10(limits = c(0.5, 30))+
-  coord_cartesian(ylim = c(0.6, 30), xlim = c(0, 40))+
-  ylab('a) Species A Expected Adults Per Individual\n(Observed Seeds * Germination Rate)')+
+  geom_line(aes(y = ExpAdultsPerFocal), data = DataExp_Across, size =1)+
+  #scale_y_log10(limits = c(0.5, 30))+
+  coord_cartesian(ylim = c(-1.5, 8), xlim = c(0, 50))+
+  scale_y_continuous(breaks = c(0,1:8)) +
+  ylab('Species A Reproductive Rate')+
   xlab('Number of Intraspecific Competitors')+
-  geom_point(aes(x = MonoEq, y = 0, fill = Model), data = KeyValuesDiffMods, shape = 24, size = 4)+
-  guides(shape = FALSE, size = FALSE, col = FALSE)+
+  guides(shape = 'none', size = 'none', col = 'none')+
+  geom_pointrangeh(data = segdat_equil,
+                   aes(x = xval_eq, y = ypos_eq,
+                       xmin = CIlo_eq, xmax = CIhi_eq,
+                       color = Model), inherit.aes = F) +
+  geom_text(x = MonoEq_TRUE, y =5,
+            label = 'True Sp. A\nEquilibrium' , col = "grey60", 
+            angle = 90, size =3, fontface='plain')+
+  geom_vline(xintercept = MonoEq_TRUE, lty = 2, color = "grey60") +
   theme(legend.justification = 'center',
         legend.position = c(0.6, 0.8),
         legend.title = element_text(size = 16),  
         legend.text = element_text(size = 16), 
         legend.background = element_rect(colour = 'white'))+
-  ggtitle('A) Species A monoculture equilibrium fit')-> SpeciesAEqPlot
+  ggtitle('a) Species A monoculture equilibrium fit') -> SpeciesAEqPlot
 
-SpeciesAEqPlot
 ```
 
-## Species B invasion into A monoculture.
+## Plot B
 
 ```{r}
 Mean_Epred_allMods_BINVASION %>%
-  pivot_longer(cols = starts_with('Mod_'),
-               names_to = 'Model', 
+  pivot_longer(cols = starts_with('Mod_'),names_to = 'Model', 
                values_to = 'Prediction') %>%
+  filter( SpA<31) %>%
   ggplot(aes(x = SpA)) +
   geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
-  geom_line(aes(y = Prediction, col = Model), size =2)+
-  geom_line(aes(y = ExpAdultsPerFocal), data = DataExp_B_Invasion, size =2)+
-  geom_point(aes(y = ObsPerFocal), data = filter(DataforB, SpB==0), shape =4) +
-  geom_hline(yintercept = 1, linetype=2)+
+  geom_line(aes(y = Prediction, col = Model))+
+  geom_line(aes(y = ExpAdultsPerFocal),
+            data = filter(DataExp_B_Invasion, SpA <31), linewidth =1)+
+  geom_point(aes(y = ObsPerFocal),
+             data = filter(DataforB, SpB==0),
+             shape =1, size = 3, alpha = 0.75) +
   scale_color_manual(values = Colours)+
   scale_fill_manual(values = Colours)+
   theme_minimal()+
   theme(legend.position = 'bottom', 
         panel.grid =  element_blank())+
-  ylab('Species B Expected Adults Per Individual\n(Observed Seeds * Germination Rate)')+
+  ylab('Species B Reproductive Rate')+
   xlab('Number of Interspecific Competitors')+
-  coord_cartesian(ylim = c(0.3, 3), xlim = c(0, 40))+
-  geom_vline(aes(xintercept = MonoEq, col = Model), data = KeyValuesDiffMods, alpha = 0.5)+
-  geom_hline(aes(yintercept = InvasionFecund, col = Model), data = KeyValuesDiffMods, alpha = 0.5)+
-  geom_point(aes(y = InvasionFecund, x = 0, fill = Model), data = KeyValuesDiffMods, shape = 23, size = 4)+
-  ggtitle('B) Species B invasion fitness fit')-> SpeciesB_InvPlot
+  coord_cartesian(ylim = c(0, 5), xlim = c(0, 40))+
+  scale_x_continuous(breaks = c(0,10, 20, 30)) +
+  geom_hline(yintercept = SpB_InvFecund_TRUE, lty = 2, color = "grey60") +
+  geom_text(x = 5, y =SpB_InvFecund_TRUE, label = 'True Invasion\nGrowth Rate' ,
+            col = "grey60", size =3, fontface='plain')+
+  geom_vline(xintercept = MonoEq_TRUE, lty = 2, color = "grey60") +
+  geom_text(x = MonoEq_TRUE, y =4,
+            label = 'True Sp. A\nEquilibrium' , col = "grey60",
+            angle = 90, size =3, fontface='plain')+
+  geom_point(x=MonoEq_TRUE, y = SpB_InvFecund_TRUE,  size = 3, alpha = 0.75, shape = 4) +
+  geom_pointrange(data = segdat_inv,
+                  aes(y = yval_inv, x = xpos_inv, ymin = CIlo_inv,
+                      ymax = CIhi_inv, color = Model), inherit.aes = F) +
+  ggtitle('b) Species B invasion growth rate') -> SpeciesB_InvPlot
 
-SpeciesB_InvPlot
 ```
 
-## Combining Plots
+## Combining
+
+```{R fig.height=4, fig.width=8}
+
+model_plots = plot_grid(SpeciesAEqPlot,
+                        SpeciesB_InvPlot+guides(fill=FALSE,col=FALSE),
+                        ncol = 2, rel_heights = c(3,3))
+
+model_plots
+
+ggsave(plot = model_plots,'Figures/Figure3.pdf', width = 8, height = 4)
+ggsave(plot = model_plots,'Figures/Figure3.png', width = 8, height = 4,
+       dpi= 600, bg = 'white')
+
+```
+
+# Model Comparisons
 
 ```{r}
-plot_grid(SpeciesAEqPlot,
-          SpeciesB_InvPlot+guides(fill=FALSE,col=FALSE),
-          ncol = 1, rel_heights = c(3,3))
+loo_compare( list(m2 = SpA_bayes_fit_2$criteria$loo,
+                  m3 = SpA_bayes_fit_3$criteria$loo,
+                  m4 = SpA_bayes_fit_4$criteria$loo,
+                  m5 = SpA_bayes_fit_5$criteria$loo,
+                  m6 = SpA_bayes_fit_6$criteria$loo)) %>%
+  as.data.frame %>% 
+  rownames_to_column('model') %>%
+  arrange(model)  %>%
+  select( model,partA_elpd_diff = elpd_diff)-> partA_ELPD
 
+loo_compare( list(m2 = SpB_bayes_fit_2$criteria$loo,
+                  m3 = SpB_bayes_fit_3$criteria$loo,
+                  m4 = SpB_bayes_fit_4$criteria$loo,
+                  m5 = SpB_bayes_fit_5$criteria$loo,
+                  m6 = SpB_bayes_fit_6$criteria$loo)) %>%
+  as.data.frame %>% 
+  rownames_to_column('model') %>%
+  arrange(model) %>%
+  select( model,partB_elpd_diff =elpd_diff) -> partB_ELPD
 
-ggsave('Figures/ModelSpec_comparison.png', height = 12, width=6, dpi = 600, bg = 'white')
+BothELPD <- left_join(partA_ELPD, partB_ELPD)
+
+BothELPD$Model <- c('Mod_2_LV'  ,'Mod_3_Exp' ,'Mod_4_EBH', 'Mod_5_BH'  ,
+                           'Mod_6_Exp')
+
+BothELPD$IGR = yval_inv
+
+BothELPD %>%
+  knitr::kable( digits = 3)
+
+SpB_InvFecund_TRUE
 
 ```
-
 
 # Session Info
 ```{r}

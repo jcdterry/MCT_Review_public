@@ -179,8 +179,8 @@ PosteriorLocation %>%
                                PSA = 'pseudoananassae',
                                SIM = 'simulans',
                                SUL = 'sulfurigaster')   ) %>%
-  rename(`Species 1 Wins` = Above, 
-         `Species 2 Wins` = Below ) %>%
+  rename(`Species j Wins` = Above, 
+         `Species i Wins` = Below ) %>%
   mutate(Difference = Coexistence-lag(Coexistence),
          MedianStable =(1-MEDND)<MEDFD   & MEDFD<(1/((1-MEDND)))  & MEDND>0 ) -> TidyTable
 
@@ -245,11 +245,11 @@ TidyName<-  function(name){
 }
 
 Labels <- data.frame(Text = c('Priority\neffect',
-                              'Species j wins',
+                              'Species j\nwins',
                               'Species i wins',
                               'Coexistence'),
-                     x = c(-0.15, 0.2, 0, 0.7),
-                     y = c(1    , 3  , 0.1, 2))
+                     x = c(-0.15, 0.25, 0, 0.7),
+                     y = c(1    , 4  , 0.1, 0.8))
 
 ```
 
@@ -273,8 +273,9 @@ MedianValues %>%
             aes(x, y2), col = 'red', linewidth = 1.5)+
   geom_point(aes(col = Treatment, MEDND, MEDFD), size = 3)+
   geom_path(arrow = arrow(length = unit(0.5, "cm")), size =2)+
-  scale_colour_manual(values = c('darkred','blue'))+ 
-  geom_text(data=Labels, aes(x,y, label =Text), size = 3)-> SubPlotA_JustDot
+  scale_colour_manual(values = c('goldenrod','darkblue'))+ 
+  theme(axis.title  = element_text(size = 14))+
+  geom_text(data=Labels, aes(x,y, label =Text), size = 5)-> SubPlotA_JustDot
 SubPlotA_JustDot
 ```
 
@@ -314,8 +315,9 @@ MedianValues %>%
             aes(x, y2), col = 'red', size = 1.5)+
   geom_point(aes(col = Treatment), size = 3)+
   geom_path(arrow = arrow(length = unit(0.5, "cm")), size =2)+
-  theme_classic()+
-  scale_colour_manual(values = c('darkred','blue')) -> SubPlotB_Errors
+  theme_classic()+ 
+  theme(axis.title  = element_text(size = 14))+
+  scale_colour_manual(values = c('goldenrod','darkblue')) -> SubPlotB_Errors
 SubPlotB_Errors
 
 ```
@@ -342,8 +344,9 @@ Both_TreatmentsValues %>%
             aes(x, y), col = 'red', size = 1.5)+
   geom_line(data = BoundaryValues,
             aes(x, y2), col = 'red', size = 1.5)+
-  scale_fill_gradient(low = 'bisque', high= 'darkred', guide = FALSE,  )+
-  theme_classic()-> focal_Para
+  scale_fill_gradient(low = 'lemonchiffon', high= 'goldenrod', guide = FALSE,  )+
+  theme_classic()+ 
+  theme(axis.title  = element_text(size = 14))-> focal_Para
 
 Both_TreatmentsValues %>%
   filter( Combination  ==SpeciesToPlot ,
@@ -362,9 +365,9 @@ Both_TreatmentsValues %>%
             aes(x, y), col = 'red', size = 1.5)+
   geom_line(data = BoundaryValues,
             aes(x, y2), col = 'red', size = 1.5)+
-  scale_fill_gradient(low = 'slategray1', high= 'blue', guide = FALSE,  )+
-  theme_classic()-> focal_Safe
-
+  scale_fill_gradient(low = 'slategray1', high= 'darkblue', guide = FALSE,  )+
+  theme_classic()+ 
+  theme(axis.title  = element_text(size = 14))-> focal_Safe
 ```
 
 # Full Posterior
@@ -390,7 +393,8 @@ Both_TreatmentsValues %>%
   theme_classic() +
   geom_path(aes( MEDND,MEDFD ), arrow = arrow(length = unit(0.5, "cm")), size =2,
             data = filter(MedianValues, Combination  ==SpeciesToPlot) )+
-  scale_colour_manual(values = c('darkred','blue'))-> SubPlotD_FullPost
+  scale_colour_manual(values = c('goldenrod','darkblue'))+ 
+  theme(axis.title  = element_text(size = 14))-> SubPlotD_FullPost
 SubPlotD_FullPost
 ```
 
@@ -403,6 +407,8 @@ TidyTable%>%
 
 d%>%
   ggplot(aes(   MEDND, MEDFD))+
+  geom_rect(aes( xmin = -1, xmax = 0.9, ymax = 50, ymin =1), fill = '#FFFFE0')+
+  geom_rect(aes( xmin = -1, xmax = 0.9, ymax = 1, ymin =0), fill = 'palegreen')+
   geom_path(data = OneLine,
             aes(x, y), col = 'red', size = 1.5)+
   geom_line(data = BoundaryValues,
@@ -414,19 +420,20 @@ d%>%
               aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
   geom_scatterpie(aes(x = MEDND, y = MEDFD, group = Treatment), data = d,
                   pie_scale = 50,
-                  cols= c('Species 1 Wins', 'Species 2 Wins','Coexistence' ,'Priority'))+
+                  cols= c('Species j Wins', 'Species i Wins',
+                          'Coexistence' ,'Priority'))+
   scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
   scale_fill_manual(name = 'Outcome',
-                    values =c('yellow', 'red', 'darkgreen', 'purple'))+
+                    values =c('khaki', 'darkgreen', 'grey55','grey85'))+
   xlab(expression(paste("Niche Difference: ", 1-rho)))+
   coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
   geom_point(aes(col = Treatment), size = 5)+ 
   geom_path(aes( MEDND,MEDFD ), arrow = arrow(length = unit(0.5, "cm")), size =2,
             data = filter(MedianValues, Combination  ==SpeciesToPlot) )+
-  scale_colour_manual(values = c('darkred','blue'))+ 
+  scale_colour_manual(values = c('goldenrod','darkblue'))+ 
   theme_classic()+
   guides(col = 'none')+
-  theme(legend.position = c(0.25, 0.7), 
+  theme(legend.position = c(0.25, 0.7), axis.title  = element_text(size = 14),
         legend.box.background = element_rect(colour = 'black',
                                              linewidth = 1))-> SubPlotE_Pies
 
@@ -438,24 +445,32 @@ SubPlotE_Pies
 ```{r fig.height=10, fig.width=10}
 Top<- plot_grid(SubPlotA_JustDot+guides(col = 'none'),
                 SubPlotB_Errors+guides(col = 'none'),
-                labels = c('A) Best Fit','B) Confidence Intervals'),
+                labels = c('a) Best Fit','b) Confidence Intervals'),
                 label_fontface = 'plain',
                 hjust = -0.1, scale=0.9)
 
 Mid<- plot_grid(focal_Para,
                 focal_Safe,ncol = 2,
-                labels = c('C) Contours', ''), label_fontface = 'plain',
+                labels = c('c) Contours', ''), label_fontface = 'plain',
                 hjust = -0.1, scale=0.9)
 
 Low <- plot_grid( SubPlotD_FullPost+guides(col = 'none'),
                   SubPlotE_Pies,
-                  labels = c('D) Posterior Draws','E) Support Summaries'),
+                  labels = c('d) Posterior Draws','e) Support Summaries'),
                   label_fontface = 'plain',
                   hjust = -0.1, scale=0.9)
 
-plot_grid(Top,Mid, Low,ncol=1)
+LEGEND <- get_legend(SubPlotA_JustDot+ 
+                         scale_colour_manual(values = c('goldenrod',
+                                                        'darkblue'),
+                                              labels = c('Treatment',
+                                                         'Control'),
+                                             name = 'Trial:')+ 
+  theme(legend.direction = 'horizontal'))
 
-ggsave('Figures/Fig5_PlotOptions.png', width=10, height = 12, dpi = 600, bg = 'white')
+plot_grid(Top,Mid, Low,LEGEND,ncol=1, rel_heights = c(1,1,1,0.1))
+
+ggsave('Figures/Fig5_PlotOptions.png', width=10, height = 13, dpi = 600, bg = 'white')
 
 ```
 
