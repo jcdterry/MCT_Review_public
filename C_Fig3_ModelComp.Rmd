@@ -312,39 +312,35 @@ segdat_inv = data.frame(Model, CIlo_inv, CIhi_inv, xpos_inv, yval_inv)
 
 ```
 
-# Plots
-
-## Plot A
-
+# Figure 3 Plots
 ```{r}
 
 Colours <- c( 'Mod_2_LV'='#648FFF' , 'Mod_3_Exp' = '#785EF0' ,
               'Mod_4_EBH' = '#DC267F','Mod_5_BH' ='#FE6100'  ,
               'Mod_6_Exp'= '#FFB000',  'MOD_TRUE' ='black')# IBM design library colours
 
+```
+
+```{r}
 Mean_Epred_allMods %>%
   pivot_longer(cols = starts_with('Mod_'),
                names_to = 'Model', 
                values_to = 'Prediction') %>%
   mutate(Prediction = ifelse(Prediction <0, 0.001,  Prediction) ) %>%
   ggplot(aes(x = SpA)) +
-   geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
-  geom_line(aes(y = Prediction, col = Model))+
-  geom_line(aes(y = ExpAdultsPerFocal), data = DataExp_Across, linewidth =1)+
+  geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
   geom_point(aes(y = ObsPerFocal), data = filter(DataforA, SpB==0),
-             shape = 1, size = 3, alpha = 0.75) +
-  geom_point(x=MonoEq_TRUE, y = 1,  size = 3, alpha = 0.75, shape = 4) +
+             shape = 1, size = 1.5, alpha = 0.75) +
   theme_minimal()+
   theme(legend.position = 'bottom', 
         panel.grid  =  element_blank())+
   scale_color_manual(values = Colours)+
   scale_fill_manual(values = Colours)+
-  geom_line(aes(y = ExpAdultsPerFocal), data = DataExp_Across, size =1)+
   #scale_y_log10(limits = c(0.5, 30))+
-  coord_cartesian(ylim = c(-1.5, 8), xlim = c(0, 50))+
+  coord_cartesian(ylim = c(-1.5, 8), xlim = c(0, 45))+
   scale_y_continuous(breaks = c(0,1:8)) +
   ylab('Species A Reproductive Rate')+
-  xlab('Number of Intraspecific Competitors')+
+  xlab('Number of Intraspecific (Species A) Competitors')+
   guides(shape = 'none', size = 'none', col = 'none')+
   geom_pointrangeh(data = segdat_equil,
                    aes(x = xval_eq, y = ypos_eq,
@@ -359,13 +355,81 @@ Mean_Epred_allMods %>%
         legend.title = element_text(size = 16),  
         legend.text = element_text(size = 16), 
         legend.background = element_rect(colour = 'white'))+
-  ggtitle('a) Species A monoculture equilibrium fit') -> SpeciesAEqPlot
+  ggtitle('a) Species A monoculture equilibrium fit') -> SpeciesAEqPlot_WO
+
+Mean_Epred_allMods_BINVASION %>%
+  pivot_longer(cols = starts_with('Mod_'),names_to = 'Model', 
+               values_to = 'Prediction') %>%
+  filter( SpA<31) %>%
+  ggplot(aes(x = SpA)) +
+  geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
+  geom_point(aes(y = ObsPerFocal),
+             data = filter(DataforB, SpB==0),
+             shape =1, size = 1.5, alpha = 0.75) +
+  scale_color_manual(values = Colours)+
+  scale_fill_manual(values = Colours)+
+  theme_minimal()+
+  theme(legend.position = 'bottom', 
+        panel.grid =  element_blank())+
+  ylab('Species B Reproductive Rate')+
+  xlab('Number of Interspecific (Species A) Competitors')+
+  coord_cartesian(ylim = c(0, 5), xlim = c(0, 40))+
+  scale_x_continuous(breaks = c(0,10, 20, 30)) +
+  geom_hline(yintercept = SpB_InvFecund_TRUE, lty = 2, color = "grey60") +
+  geom_text(x = 5, y =SpB_InvFecund_TRUE, label = 'True Invasion\nGrowth Rate' ,
+            col = "grey60", size =3, fontface='plain')+
+  geom_pointrange(data = segdat_inv,
+                  aes(y = yval_inv, x = xpos_inv, ymin = CIlo_inv,
+                      ymax = CIhi_inv, color = Model), inherit.aes = F) +
+  ggtitle('b) Species B invasion growth rate') -> SpeciesB_InvPlot_WO
+
+model_plots_WO = plot_grid(SpeciesAEqPlot_WO,
+                           SpeciesB_InvPlot_WO+guides(fill=FALSE,col=FALSE),
+                           ncol = 2, rel_heights = c(3,3))
+
+model_plots_WO
+
+ggsave(plot = model_plots_WO,'Figures/Figure3ab.pdf', width = 8, height = 4)
+ggsave(plot = model_plots_WO,'Figures/Figure3ab.png', width = 8, height = 4,
+       dpi= 600, bg = 'white')
 
 ```
 
-## Plot B
+# SI version, with model plots
 
 ```{r}
+Mean_Epred_allMods %>%
+  pivot_longer(cols = starts_with('Mod_'),
+               names_to = 'Model', 
+               values_to = 'Prediction') %>%
+  mutate(Prediction = ifelse(Prediction <0, 0.001,  Prediction) ) %>%
+  ggplot(aes(x = SpA)) +
+  geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
+  geom_line(aes(y = Prediction, col = Model))+
+  geom_point(aes(y = ObsPerFocal), data = filter(DataforA, SpB==0),
+             shape = 1, size = 1.5, alpha = 0.75) +
+  theme_minimal()+
+  theme(legend.position = 'bottom', 
+        panel.grid  =  element_blank())+
+  scale_color_manual(values = Colours)+
+  scale_fill_manual(values = Colours) +
+  ylab('Species A Reproductive Rate')+
+  xlab('Number of Intraspecific (Species A) Competitors')+
+  guides(shape = 'none', size = 'none', col = 'none')+
+  geom_pointrangeh(data = segdat_equil,
+                   aes(x = xval_eq, y = ypos_eq,
+                       xmin = CIlo_eq, xmax = CIhi_eq,
+                       color = Model), inherit.aes = F) +
+  geom_text(x = MonoEq_TRUE, y =5,
+            label = 'True Sp. A\nEquilibrium' , col = "grey60", 
+            angle = 90, size =3, fontface='plain')+
+  geom_vline(xintercept = MonoEq_TRUE, lty = 2, color = "grey60") +
+  theme(legend.justification = 'center',
+        legend.position = c(0.6, 0.8),
+        legend.title = element_text(size = 16),  
+        legend.text = element_text(size = 16), 
+        legend.background = element_rect(colour = 'white')) -> SpeciesAEqPlot
+
 Mean_Epred_allMods_BINVASION %>%
   pivot_longer(cols = starts_with('Mod_'),names_to = 'Model', 
                values_to = 'Prediction') %>%
@@ -373,49 +437,59 @@ Mean_Epred_allMods_BINVASION %>%
   ggplot(aes(x = SpA)) +
   geom_rect(aes( xmin = -10, xmax = 50, ymax = 1, ymin =0), fill = 'grey90')+
   geom_line(aes(y = Prediction, col = Model))+
-  geom_line(aes(y = ExpAdultsPerFocal),
-            data = filter(DataExp_B_Invasion, SpA <31), linewidth =1)+
   geom_point(aes(y = ObsPerFocal),
              data = filter(DataforB, SpB==0),
-             shape =1, size = 3, alpha = 0.75) +
+             shape =1, size = 1.5, alpha = 0.75) +
   scale_color_manual(values = Colours)+
   scale_fill_manual(values = Colours)+
   theme_minimal()+
   theme(legend.position = 'bottom', 
         panel.grid =  element_blank())+
   ylab('Species B Reproductive Rate')+
-  xlab('Number of Interspecific Competitors')+
-  coord_cartesian(ylim = c(0, 5), xlim = c(0, 40))+
-  scale_x_continuous(breaks = c(0,10, 20, 30)) +
+  xlab('Number of Interspecific (Species A) Competitors') +
   geom_hline(yintercept = SpB_InvFecund_TRUE, lty = 2, color = "grey60") +
   geom_text(x = 5, y =SpB_InvFecund_TRUE, label = 'True Invasion\nGrowth Rate' ,
             col = "grey60", size =3, fontface='plain')+
-  geom_vline(xintercept = MonoEq_TRUE, lty = 2, color = "grey60") +
-  geom_text(x = MonoEq_TRUE, y =4,
-            label = 'True Sp. A\nEquilibrium' , col = "grey60",
-            angle = 90, size =3, fontface='plain')+
-  geom_point(x=MonoEq_TRUE, y = SpB_InvFecund_TRUE,  size = 3, alpha = 0.75, shape = 4) +
   geom_pointrange(data = segdat_inv,
                   aes(y = yval_inv, x = xpos_inv, ymin = CIlo_inv,
-                      ymax = CIhi_inv, color = Model), inherit.aes = F) +
-  ggtitle('b) Species B invasion growth rate') -> SpeciesB_InvPlot
+                      ymax = CIhi_inv, color = Model), inherit.aes = F) -> SpeciesB_InvPlot
 
+model_plots = plot_grid(SpeciesAEqPlot+
+                          coord_cartesian(ylim = c(-1.5, 8), xlim = c(0, 45))+
+                          scale_y_continuous(breaks = c(0,1:8)) +
+  ggtitle('a) Species A monoculture equilibrium fit'),
+                        SpeciesB_InvPlot+
+                          coord_cartesian(ylim = c(0, 5), xlim = c(0, 40))+
+                          scale_x_continuous(breaks = c(0,10, 20, 30))+
+                          guides(fill=FALSE,col=FALSE)+
+  ggtitle('b) Species B invasion growth rate'),
+                        ncol = 2, rel_heights = c(3,3))
 ```
 
-## Combining
+## Facetted
 
-```{R fig.height=4, fig.width=8}
+```{R}
+Facetted_fits<- plot_grid(SpeciesAEqPlot+
+            facet_grid(~Model)+
+            theme(strip.text = element_blank())+
+  ggtitle('c) Species A monoculture equilibrium fit'),
+          SpeciesB_InvPlot+
+            facet_grid(~Model)+
+            theme(strip.text = element_blank())+
+                          guides(fill=FALSE,col=FALSE)+
+  ggtitle('d) Species B invasion growth rate'), nrow=2)
+```
 
-model_plots = plot_grid(SpeciesAEqPlot,
-                        SpeciesB_InvPlot+guides(fill=FALSE,col=FALSE),
-                        ncol = 2, rel_heights = c(3,3))
+## Combining into SI
 
-model_plots
+```{r}
 
-ggsave(plot = model_plots,'Figures/Figure3.pdf', width = 8, height = 4)
-ggsave(plot = model_plots,'Figures/Figure3.png', width = 8, height = 4,
+plot_grid(model_plots,Facetted_fits, ncol = 1)
+
+
+ggsave('Figures/FigureSI2.pdf', width = 10, height = 12)
+ggsave('Figures/FigureSI2.png', width = 10, height = 12,
        dpi= 600, bg = 'white')
-
 ```
 
 # Model Comparisons
@@ -444,7 +518,7 @@ loo_compare( list(m2 = SpB_bayes_fit_2$criteria$loo,
 BothELPD <- left_join(partA_ELPD, partB_ELPD)
 
 BothELPD$Model <- c('Mod_2_LV'  ,'Mod_3_Exp' ,'Mod_4_EBH', 'Mod_5_BH'  ,
-                           'Mod_6_Exp')
+                    'Mod_6_Exp')
 
 BothELPD$IGR = yval_inv
 

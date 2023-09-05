@@ -53,24 +53,28 @@ PlotResponse <- function(lambda_treat, a_treat, lambda_ctrl, a_ctrl){
   ## Control
   df_ctrl <- data.frame(N_comp =rep( c(0, 2, 4, 10), each = 5))
   df2_ctrl <- data.frame(N_comp =seq(from =0, to = 10, length = 10000))
-
+  
   
   df_ctrl$Fitness<- lambda_ctrl / (1 + a_ctrl*df$N_comp)
   df2_ctrl$Fitness<- lambda_ctrl / (1 + a_ctrl*df2$N_comp)
   
   df_ctrl$Obs = rpois(length(df_ctrl$Fitness), df_ctrl$Fitness)
   df_ctrl$Treat = 'CTRL'
-
+  
   ## Combining
   Raw_df <- bind_rows( df, df_ctrl)
   
+  df2$Treat = 'TREAT'
+  df2_ctrl$Treat = 'CTRL'
+  Linedata <-   bind_rows(df2,df2_ctrl )
   
-  ## Plotting
-  
+    ## Plotting
+
   xx<- ggplot(Raw_df, aes( x = N_comp, col = Treat))+
     geom_jitter(aes(y = Obs), height = 0, width= 0.2, alpha = 0.5)+
-    geom_line(aes(y = Fitness), col= 'darkblue', data = df2)+
-        geom_line(aes(y = Fitness), col= 'goldenrod', data = df2_ctrl)+
+     geom_line(aes(y = Fitness), data = Linedata)+
+  #  geom_line(aes(y = Fitness), col= 'darkblue', data = Linedata)+
+   # geom_line(aes(y = Fitness), col= 'goldenrod', data = df2_ctrl)+
     xlab('Competitor Number')+
     ylab('Number in\nNext Generation')+
     theme_classic()+
@@ -78,35 +82,48 @@ PlotResponse <- function(lambda_treat, a_treat, lambda_ctrl, a_ctrl){
     theme(panel.grid.major  = element_blank(), 
           panel.grid.minor  = element_blank(), )+
     scale_color_manual(values = c('goldenrod', 'darkblue'), name = 'Trial')
-    return( xx) 
+  return( xx) 
 }
 
 #### Response Surface experiments
 
 TREAT_Fits<- plot_grid(PlotResponse(lambda_treat = lambda1_TREAT,a_treat =  a11_w,
                                     lambda_ctrl = lambda1_CTRL, a_ctrl = a11_d )+
-                       xlab('')+
-                       ylab('Sp 1 Fecundity')+
+                         xlab('')+
+                         ylab('Sp 1 Fecundity')+
                          guides(col = 'none'),
-                     PlotResponse(lambda_treat = lambda1_TREAT, a_treat = a12_w,
-                                  lambda1_CTRL, a12_d)+
-                       xlab('')+
-                       ylab('')+
+                       PlotResponse(lambda_treat = lambda1_TREAT, a_treat = a12_w,
+                                    lambda1_CTRL, a12_d)+
+                         xlab('')+
+                         ylab('')+
                          guides(col = 'none'),
-                           PlotResponse(lambda2_TREAT, a21_w,lambda2_CTRL, a21_d)+
-                       xlab('Number of Sp 1\nCompetitors')+
-                       ylab('Sp 2 Fecundity')+
+                       PlotResponse(lambda2_TREAT, a21_w,lambda2_CTRL, a21_d)+
+                         xlab('Number of Sp 1\nCompetitors')+
+                         ylab('Sp 2 Fecundity')+
                          guides(col = 'none'),
-                     PlotResponse(lambda2_TREAT, a22_w,lambda2_CTRL, a22_d)+
-                       xlab('Number of Sp 2\nCompetitors')+
-                       ylab('')+
-                       theme(legend.position = c(0.7, 0.8), 
-                             legend.background = element_rect(fill = 'white')),
-                     ncol = 2 )
+                       PlotResponse(lambda2_TREAT, a22_w,lambda2_CTRL, a22_d)+
+                         xlab('Number of Sp 2\nCompetitors')+
+                         ylab('')+
+                         guides(col = 'none')+
+                         theme(legend.position = c(0.7, 0.8), 
+                               legend.background = element_rect(fill = 'white')),
+                       ncol = 2 )
 
-TREAT_Fits
 
-ggsave('Figures/Fig1b_Data.png', width = 4, height =4, dpi = 600, bg = 'white')
+
+
+
+plot_grid(get_legend(PlotResponse(lambda_treat = lambda1_TREAT,a_treat =  a11_w,
+                                  lambda_ctrl = lambda1_CTRL, a_ctrl = a11_d )+
+                       theme(legend.position = 'top') +
+                       scale_colour_manual(values=c('goldenrod', 'darkblue')) + 
+                       scale_linetype_manual("", values=c(0,1,1))),
+          TREAT_Fits,
+          ncol=1, rel_heights = c(1,12))  
+
+
+
+ggsave('Figures/Fig1b_Data.png', width = 4, height =4.2, dpi = 600, bg = 'white')
 
 ```
 

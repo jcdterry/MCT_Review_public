@@ -408,7 +408,7 @@ TidyTable%>%
 d%>%
   ggplot(aes(   MEDND, MEDFD))+
   geom_rect(aes( xmin = -1, xmax = 0.9, ymax = 50, ymin =1), fill = '#FFFFE0')+
-  geom_rect(aes( xmin = -1, xmax = 0.9, ymax = 1, ymin =0), fill = 'palegreen')+
+  geom_rect(aes( xmin = -1, xmax = 0.9, ymax = 1, ymin =0), fill = 'palegreen3')+
   geom_path(data = OneLine,
             aes(x, y), col = 'red', size = 1.5)+
   geom_line(data = BoundaryValues,
@@ -418,13 +418,14 @@ d%>%
               aes(x = x, ymin = y2, ymax = y1), inherit.aes = FALSE, fill = 'grey75')+
   geom_ribbon(data = BoundaryValues_P,
               aes(x = x, ymin = y1, ymax = y2), inherit.aes = FALSE, fill = 'grey90')+
-  geom_scatterpie(aes(x = MEDND, y = MEDFD, group = Treatment), data = d,
+  geom_scatterpie(aes(x = MEDND, y = MEDFD, group = Treatment), 
+                  data = rename(d, `Priority Effect`='Priority' ),
                   pie_scale = 50,
                   cols= c('Species j Wins', 'Species i Wins',
-                          'Coexistence' ,'Priority'))+
+                          'Coexistence' ,'Priority Effect'))+
   scale_y_log10(name = expression(paste("Fitness difference: ",kappa[j]/kappa[i])) )+
   scale_fill_manual(name = 'Outcome',
-                    values =c('khaki', 'darkgreen', 'grey55','grey85'))+
+                    values =c('khaki', 'palegreen4', 'grey55','grey85'))+
   xlab(expression(paste("Niche Difference: ", 1-rho)))+
   coord_fixed(xlim =c(-0.25, 1), ylim= c(0.5, 6.5))+
   geom_point(aes(col = Treatment), size = 5)+ 
@@ -461,12 +462,12 @@ Low <- plot_grid( SubPlotD_FullPost+guides(col = 'none'),
                   hjust = -0.1, scale=0.9)
 
 LEGEND <- get_legend(SubPlotA_JustDot+ 
-                         scale_colour_manual(values = c('goldenrod',
-                                                        'darkblue'),
-                                              labels = c('Treatment',
-                                                         'Control'),
-                                             name = 'Trial:')+ 
-  theme(legend.direction = 'horizontal'))
+                       scale_colour_manual(values = c('goldenrod',
+                                                      'darkblue'),
+                                           labels = c('Treatment',
+                                                      'Control'),
+                                           name = 'Trial:')+ 
+                       theme(legend.direction = 'horizontal'))
 
 plot_grid(Top,Mid, Low,LEGEND,ncol=1, rel_heights = c(1,1,1,0.1))
 

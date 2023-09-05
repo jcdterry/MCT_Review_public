@@ -97,9 +97,12 @@ BothData%>%
   mutate(Competitors = N_focal+N_comp) %>%
   mutate(Competition= recode(Test,
                              'INTRA' = 'Intraspecific',
-                             'INTER' = 'Interspecific')) %>%
+                             'INTER' = 'Interspecific'),
+         Focal = recode(Focal ,
+                             'Sp1' = 'Species 1',
+                             'Sp2' = 'Species 2')) %>%
   ggplot(aes( x =Competitors ))+
-  geom_point(aes(y=ObsSeeds), col = 2, alpha = 0.1)+
+  geom_point(aes(y=ObsSeeds), size = 0.8, alpha = 0.1)+
   geom_point(aes(y=ExpectedSeeds))+
   geom_line(aes(y=ExpectedSeeds))+
   facet_wrap(Focal ~Competition, 
@@ -108,7 +111,7 @@ BothData%>%
   scale_y_log10()+
   theme_minimal()+
   xlab('Number of Competitors')+
-  ylab('Observed Focal Species Output\nper individual')+
+  ylab('Observed Focal Species\nOutput per Individual')+
   scale_x_continuous(breaks = c(0,Levels)) -> A_RawData
 A_RawData
 ```
@@ -209,10 +212,13 @@ Param_df%>%
   mutate(VAR= recode(VAR,
                      'inter' = ' α Intraspecific',
                      'intra' = 'α Interspecific',
-                     'lambda'= 'λ')) %>%
+                     'lambda'= 'λ'),
+         Focal = recode(Focal ,
+                             'Sp1' = 'Species 1',
+                             'Sp2' = 'Species 2')) %>%
   ggplot(aes( y =Model , x = mean))+
-  geom_segment(aes( x= q5, xend = q95, yend = Model , col =Model ), linewidth = 2)+
-  geom_segment(aes( x= q20, xend = q80, yend = Model, col =Model  ), linewidth = 4)+
+  geom_segment(aes( x= q5, xend = q95, yend = Model , col =Model ), linewidth = 1)+
+  geom_segment(aes( x= q20, xend = q80, yend = Model, col =Model  ), linewidth = 2)+
   geom_point(size =2)+
   # geom_errorbarh(aes( xmin = q5, xmax = q95))+
   facet_grid(Focal~VAR, 
@@ -333,8 +339,8 @@ C_CorexistPlane
 # Combining  parts of the figure together
 
 ```{r message=FALSE, warning=FALSE}
-Bottom<- plot_grid(B_Param_estimates,  C_CorexistPlane, labels = c('B', 'C'))
-plot_grid(A_RawData,Bottom, nrow = 2, labels = c('A', ''))
+Bottom<- plot_grid(B_Param_estimates,  C_CorexistPlane, labels = c('b)', 'c)'))
+plot_grid(A_RawData,Bottom, nrow = 2, labels = c('a)', ''))
 ggsave('Figures/Fig4_ErrorStruct.png', width = 10, height = 6, dpi = 600, bg = 'white')
 ```
 
@@ -400,11 +406,9 @@ BothData%>%
   scale_x_continuous(breaks = c(0,Levels))+
   scale_y_log10()-> SI2
 
-ggsave( 'Figures/SI2.png',SI2,  height= 6, width=6, dpi = 600, bg = 'white')
+ggsave( 'Figures/FigureSI3.png',SI2,  height= 6, width=6, dpi = 600, bg = 'white')
 
 ```
-
-
 
 
 # Session Info
