@@ -472,7 +472,7 @@ LEGEND <- get_legend(SubPlotA_JustDot+
 plot_grid(Top,Mid, Low,LEGEND,ncol=1, rel_heights = c(1,1,1,0.1))
 
 ggsave('Figures/Fig5_PlotOptions.png', width=10, height = 13, dpi = 600, bg = 'white')
-
+ggsave('Figures/Fig5_PlotOptions.pdf', width=10, height = 13, bg = 'white')
 ```
 
 # Session Info
